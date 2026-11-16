@@ -15,8 +15,10 @@ from urllib.parse import urlparse
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from app import Api, web_dir
+from demo_data import DemoApi
 
-API = Api()
+DEMO = "--demo" in sys.argv
+API = DemoApi() if DEMO else Api()
 METHODS = {"version", "list_sessions", "list_messages", "preview_branch", "do_branch"}
 
 SHIM = """<script>
@@ -88,9 +90,13 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--port", type=int, default=8777)
+    p.add_argument("--demo", action="store_true", help="使用虚构演示数据，绝不访问真实会话")
     a = p.parse_args()
+    global DEMO, API
+    DEMO = a.demo
+    API = DemoApi() if DEMO else Api()
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)
-    print(f"serving on http://127.0.0.1:{a.port}", flush=True)
+    print(f"serving on http://127.0.0.1:{a.port}" + ("  [DEMO 虚构数据]" if DEMO else ""), flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
