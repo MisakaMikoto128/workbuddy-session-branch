@@ -4,7 +4,7 @@ use core::Variant;
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 
-const VERSION: &str = "1.0.0";
+const VERSION: &str = env!("APP_VERSION");
 
 #[derive(Clone)]
 struct AppState {
@@ -20,6 +20,47 @@ impl AppState {
 #[tauri::command]
 fn version() -> Value {
     json!({ "ok": true, "version": VERSION })
+}
+
+fn version_tuple(s: &str) -> (u64, u64, u64) {
+    let nums: Vec<u64> = s
+        .trim_start_matches(['v', 'V'])
+        .split('.')
+        .take(3)
+        .map(|p| p.parse().unwrap_or(0))
+        .collect();
+    (
+        *nums.get(0).unwrap_or(&0),
+        *nums.get(1).unwrap_or(&0),
+        *nums.get(2).unwrap_or(&0),
+    )
+}
+
+#[tauri::command]
+fn check_update() -> Value {
+    const URL: &str = "https://github.com/MisakaMikoto128/workbuddy-session-branch/releases/latest/download/update.json";
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .user_agent("wb-session-branch-updater")
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => return json!({ "ok": false, "error": e.to_string() }),
+    };
+    let data: Value = match client.get(URL).send().and_then(|r| r.json()) {
+        Ok(v) => v,
+        Err(e) => return json!({ "ok": false, "error": e.to_string() }),
+    };
+    let latest = data.get("version").and_then(|x| x.as_str()).unwrap_or("");
+    let has = version_tuple(latest) > version_tuple(VERSION);
+    json!({
+        "ok": true,
+        "current": VERSION,
+        "latest": latest,
+        "hasUpdate": has,
+        "publishedAt": data.get("published_at").and_then(|x| x.as_str()).unwrap_or(""),
+        "page": "https://github.com/MisakaMikoto128/workbuddy-session-branch/releases/latest",
+    })
 }
 
 #[tauri::command]
@@ -82,6 +123,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             version,
+            check_update,
             list_variants,
             get_variant,
             set_variant,
