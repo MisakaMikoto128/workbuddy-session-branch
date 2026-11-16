@@ -207,6 +207,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .timeline-head{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-5);border-bottom:1px solid var(--line);background:var(--surface)}
 .timeline-head .tag{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink-3)}
 .role-filter{display:flex;gap:4px;margin-left:auto}
+.session-actions{display:flex;align-items:center;gap:6px;margin-left:var(--sp-2)}
+.session-actions .btn{padding:5px 10px;font-size:var(--fs-xs);border-radius:var(--r-sm)}
+.btn-red{background:var(--c-red)}
 
 .msg{display:grid;grid-template-columns:30px 1fr;gap:var(--sp-3);padding:10px var(--sp-5);position:relative;cursor:pointer;transition:background .12s var(--ease)}
 .msg:hover{background:var(--surface-2)}
@@ -316,6 +319,10 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
         <span class="pane-title" style="text-transform:none;color:var(--ink)">消息时间线</span>
         <span class="tag" id="msgMeta">未选择会话</span>
         <span class="tl-latest" id="tlLatest"></span>
+        <div class="session-actions" id="sessionActions" style="display:none">
+          <button class="btn btn-cyan" id="btnMigrate" onclick="askMigrate()">迁移到国际版</button>
+          <button class="btn btn-red" onclick="askDelete()">删除会话</button>
+        </div>
         <div class="role-filter" id="roleFilters">
           <button class="chip on" data-r="all" onclick="setRoleFilter('all')">全部</button>
           <button class="chip" data-r="user" onclick="setRoleFilter('user')">我的提问</button>
@@ -349,12 +356,15 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 <script>
 let sessions=[], msgs=[], curSess=null, forkId=null, keepCount=0;
 let sessFilter='all', roleFilter='all';
-let headId='', curVariant='domestic';
+let headId='', curVariant='domestic', featSessionActions=true;
 
 const ARG_KEYS={
   list_messages:['sessionId'],
   preview_branch:['sessionId','atId','title'],
   do_branch:['sessionId','atId','title'],
+  migrate_session:['sessionId','target','titleHint'],
+  delete_session:['sessionId'],
+  restore_session:['sessionId'],
   set_variant:['id'],
 };
 function api(name,...args){
@@ -378,7 +388,15 @@ function api(name,...args){
 function toast(msg,kind='info'){
   const el=document.getElementById('toast');
   el.textContent=msg;el.className='toast on '+kind;
+  el.style.pointerEvents='none';
   clearTimeout(el._t);el._t=setTimeout(()=>el.className='toast',2800);
+}
+function toastUndo(msg,onUndo,ms=8000){
+  const el=document.getElementById('toast');
+  el.innerHTML=esc(msg)+'<button id="toastUndo" style="margin-left:12px;padding:2px 9px;border-radius:5px;border:1px solid oklch(100% 0 0/.55);color:inherit;font-size:var(--fs-xs);font-weight:700;cursor:pointer">撤销</button>';
+  el.className='toast on ok';el.style.pointerEvents='auto';
+  document.getElementById('toastUndo').onclick=()=>{clearTimeout(el._t);el.className='toast';el.style.pointerEvents='none';onUndo();};
+  clearTimeout(el._t);el._t=setTimeout(()=>{el.className='toast';el.style.pointerEvents='none';},ms);
 }
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 function short(s,n=8){return s?s.slice(0,n)+'…':'';}
@@ -472,7 +490,7 @@ async function pickSession(id){
   curSess=id;forkId=null;keepCount=0;
   document.getElementById('msgMeta').textContent='加载中…';
   document.getElementById('msgList').innerHTML= Array.from({length:7},()=>`<div class="skel"><div class="skel-line" style="width:38%"></div><div class="skel-line" style="width:82%"></div></div>`).join('');
-  renderSessions();renderMsgs();updateUI();setSteps(2);
+  renderSessions();renderMsgs();updateUI();updateSessionActions();setSteps(2);
   try{
     const r=await api('list_messages',id);
     if(!r.ok)throw new Error(r.error||'未知错误');
@@ -542,13 +560,20 @@ function updateUI(){
   document.getElementById('btnPreview').disabled=!ok;
   document.getElementById('btnFork').disabled=!ok;
 }
+function updateSessionActions(){
+  const box=document.getElementById('sessionActions');
+  if(!box)return;
+  box.style.display=(curSess&&featSessionActions)?'flex':'none';
+  const target=curVariant==='domestic'?'international':'domestic';
+  document.getElementById('btnMigrate').textContent='迁移到'+(target==='domestic'?'国内版':'国际版');
+}
 function reset(){
   forkId=null;keepCount=0;curSess=null;msgs=[];
   document.getElementById('newTitle').value='';
   document.getElementById('msgMeta').textContent='未选择会话';
   document.getElementById('tlLatest').textContent='';
   document.getElementById('search').value='';
-  renderSessions();renderMsgs();updateUI();setSteps(1);
+  renderSessions();renderMsgs();updateUI();updateSessionActions();setSteps(1);
 }
 function scrollToLatest(){
   const box=document.getElementById('msgList');
@@ -578,12 +603,15 @@ async function quickFork(e,id){
 async function initVariants(){
   try{
     const [vr,cr]=await Promise.all([api('list_variants'),api('get_variant')]);
-    if(!vr.ok||!cr.ok||!vr.data||vr.data.length<2)return;
-    curVariant=cr.id||'domestic';
-    const sw=document.getElementById('variantSwitch');
-    sw.style.display='flex';
-    sw.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===curVariant));
-  }catch(e){}
+    if(!vr.ok||!cr.ok){featSessionActions=false;updateSessionActions();return;}
+    if(vr.data&&vr.data.length>=2){
+      curVariant=cr.id||'domestic';
+      const sw=document.getElementById('variantSwitch');
+      sw.style.display='flex';
+      sw.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===curVariant));
+    }
+    updateSessionActions();
+  }catch(e){featSessionActions=false;updateSessionActions();}
 }
 async function switchVariant(id){
   if(id===curVariant)return;
@@ -637,6 +665,71 @@ async function doFork(){
       <div class="modal-btns"><button class="btn btn-blue" onclick="closeModal();reset();loadSessions()">完成</button></div>
     </div>`);
   }catch(e){toast('创建失败：'+e.message,'err');}
+}
+
+function variantLabel(id){return id==='domestic'?'国内版':'国际版';}
+function curTarget(){return curVariant==='domestic'?'international':'domestic';}
+function askMigrate(){
+  if(!curSess)return;
+  const s=sessions.find(x=>x.id===curSess);
+  const title=s?s.title:'(无标题)';
+  const count=msgs.length||(s?s.count:0);
+  const target=curTarget();
+  showModal(`<div class="modal"><h2><span class="bullet" style="background:var(--c-cyan)"></span>迁移会话</h2>
+    <p>从 <b>${variantLabel(curVariant)}</b> → <b>${variantLabel(target)}</b>，在目标版本生成独立副本。</p>
+    <div class="kv">
+      <div class="row"><span>会话标题</span><span>${esc(title)}</span></div>
+      <div class="row"><span>消息数</span><span>${count} 条</span></div>
+    </div>
+    <div class="note">原会话保留；目标副本自动适配用户标识与路径风格，并生成新的会话 ID。写入前自动备份目标数据库。</div>
+    <div class="modal-btns"><button class="btn btn-slate" onclick="closeModal()">取消</button><button class="btn btn-cyan" onclick="doMigrate()">确认迁移</button></div>
+  </div>`);
+}
+async function doMigrate(){
+  if(!curSess)return;
+  const target=curTarget();
+  const s=sessions.find(x=>x.id===curSess);
+  const title=s?s.title:'(无标题)';
+  closeModal();toast('正在迁移…','info');
+  try{
+    const r=await api('migrate_session',curSess,target,title);
+    if(!r.ok)throw new Error(r.error||'未知错误');
+    toast('已迁移到'+variantLabel(target),'ok');
+    showModal(`<div class="modal"><h2 class="ok-title"><span class="bullet" style="background:var(--c-green)"></span>迁移完成</h2>
+      <p>${esc(r.title)} · 已复制 ${r.keptMessages} 条消息到${variantLabel(target)}。</p>
+      <div class="code">${esc(r.newId)}</div>
+      <div class="modal-btns"><button class="btn btn-blue" onclick="closeModal()">完成</button></div>
+    </div>`);
+  }catch(e){toast('迁移失败：'+e.message,'err');}
+}
+function askDelete(){
+  if(!curSess)return;
+  const s=sessions.find(x=>x.id===curSess);
+  const title=s?s.title:'(无标题)';
+  showModal(`<div class="modal"><h2><span class="bullet" style="background:var(--c-red)"></span>删除会话</h2>
+    <p>即将删除「${esc(title)}」。</p>
+    <div class="note" style="background:var(--red-soft);color:var(--c-red)">此为软删除，对话数据保留在数据库中可恢复。删除后可在提示中点「撤销」还原。</div>
+    <div class="modal-btns"><button class="btn btn-slate" onclick="closeModal()">取消</button><button class="btn btn-red" onclick="doDelete()">确认删除</button></div>
+  </div>`);
+}
+async function doDelete(){
+  if(!curSess)return;
+  const id=curSess;
+  closeModal();
+  try{
+    const r=await api('delete_session',id);
+    if(!r.ok)throw new Error(r.error||'未知错误');
+    reset();
+    await loadSessions();
+    toastUndo('会话已删除',async()=>{
+      try{
+        const rr=await api('restore_session',id);
+        if(!rr.ok)throw new Error(rr.error||'未知错误');
+        await loadSessions();
+        toast('已恢复会话','ok');
+      }catch(e){toast('撤销失败：'+e.message,'err');}
+    });
+  }catch(e){toast('删除失败：'+e.message,'err');}
 }
 
 function showModal(html){

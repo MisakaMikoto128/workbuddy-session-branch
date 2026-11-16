@@ -19,7 +19,11 @@ from demo_data import DemoApi
 
 DEMO = "--demo" in sys.argv
 API = DemoApi() if DEMO else Api()
-METHODS = {"version", "list_sessions", "list_messages", "preview_branch", "do_branch"}
+METHODS = {
+    "version", "list_variants", "get_variant", "set_variant",
+    "list_sessions", "list_messages", "preview_branch", "do_branch",
+    "migrate_session", "delete_session", "restore_session", "check_update",
+}
 
 SHIM = """<script>
 (function () {

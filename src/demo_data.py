@@ -73,11 +73,49 @@ def messages_for(session_id):
 class DemoApi:
     """与真实 Api 接口一致，但全部返回演示数据，无任何副作用。"""
 
+    deleted = set()
+    variant = "domestic"
+
     def version(self):
         return {"ok": True, "version": "1.0.0-demo"}
 
+    def list_variants(self):
+        return {"ok": True, "data": [
+            {"id": "domestic", "name": "WorkBuddy 国内版", "desc": "~/.workbuddy", "available": True},
+            {"id": "international", "name": "WorkBuddy AI 国际版", "desc": "~/.workbuddy-ai", "available": True},
+        ]}
+
+    def get_variant(self):
+        return {"ok": True, "id": self.variant}
+
+    def set_variant(self, vid):
+        self.variant = vid
+        return {"ok": True, "id": vid}
+
+    def migrate_session(self, session_id, target, title_hint=""):
+        src = next((s for s in SESSIONS if s["id"] == session_id), None)
+        if not src:
+            return {"ok": False, "error": "演示会话不存在"}
+        return {
+            "ok": True,
+            "newId": "demo-migrated-0001",
+            "title": title_hint or (src["title"] + " · 副本"),
+            "keptMessages": len(messages_for(session_id)),
+            "backup": "/demo/backup/workbuddy.db.bak-migrate",
+            "file": "/demo/projects/demo-migrated-0001.jsonl",
+            "target": target,
+        }
+
+    def delete_session(self, session_id):
+        self.deleted.add(session_id)
+        return {"ok": True, "id": session_id}
+
+    def restore_session(self, session_id):
+        self.deleted.discard(session_id)
+        return {"ok": True, "id": session_id}
+
     def list_sessions(self):
-        return {"ok": True, "data": [dict(s) for s in SESSIONS]}
+        return {"ok": True, "data": [dict(s) for s in SESSIONS if s["id"] not in self.deleted]}
 
     def list_messages(self, session_id):
         ms = messages_for(session_id)
