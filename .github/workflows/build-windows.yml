@@ -9,39 +9,96 @@ on:
 permissions:
   contents: write
 
+env:
+  APP_NAME: wb-session-branch
+  ONEFILE: wb-session-branch-windows-x64-onefile.exe
+  DIRZIP: wb-session-branch-windows-x64-dir.zip
+
 jobs:
   build:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
         with:
-          python-version: "3.11"
+          targets: x86_64-pc-windows-msvc
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pywebview pythonnet pyinstaller
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: rust -> target
 
-      - name: Build with PyInstaller
-        run: pyinstaller scripts\build.spec --distpath dist --workpath build
+      - name: Install tauri-cli
+        run: cargo install tauri-cli --version '^2' --locked
 
-      - name: Normalize artifact name
+      - name: Build Tauri app
+        working-directory: rust
+        run: cargo tauri build --no-bundle
+
+      - name: Package onefile and dir
         shell: pwsh
-        run: Rename-Item -Path "dist\会话分支管理器.exe" -NewName "wb-session-branch-windows.exe"
+        run: |
+          $out = "artifacts"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $exe = "rust\target\release\${{ env.APP_NAME }}.exe"
+          if (-not (Test-Path $exe)) { throw "未找到 $exe" }
+          Copy-Item $exe "$out\${{ env.ONEFILE }}"
+          # 目录版：exe + README + LICENSE + 图标，打成一个 zip
+          $dir = "$out\dir-staging"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item $exe "$dir\会话分支管理器.exe"
+          Copy-Item README.md, LICENSE "$dir\"
+          New-Item -ItemType Directory -Force "$dir\assets" | Out-Null
+          Copy-Item assets\app.ico "$dir\assets\"
+          Compress-Archive -Path "$dir\*" -DestinationPath "$out\${{ env.DIRZIP }}" -Force
+          Remove-Item $dir -Recurse -Force
+          Get-ChildItem $out | ForEach-Object { "打包: $($_.Name) $($_.Length) bytes" }
 
-      - name: Upload artifact
+      - name: Generate update metadata
+        shell: pwsh
+        run: |
+          $ver = $env:GITHUB_REF_NAME
+          $base = "https://github.com/${{ github.repository }}/releases/download/$ver"
+          $onefile = "artifacts\${{ env.ONEFILE }}"
+          $dirzip = "artifacts\${{ env.DIRZIP }}"
+          $h1 = (Get-FileHash $onefile -Algorithm SHA256).Hash.ToLower()
+          $h2 = (Get-FileHash $dirzip -Algorithm SHA256).Hash.ToLower()
+          $json = @{
+            version = $ver.TrimStart('v')
+            tag = $ver
+            published_at = (Get-Date).ToUniversalTime().ToString("o")
+            platform = "windows-x64"
+            assets = @(
+              @{ name = "${{ env.ONEFILE }}"; url = "$base/${{ env.ONEFILE }}"; sha256 = $h1; size = (Get-Item $onefile).Length },
+              @{ name = "${{ env.DIRZIP }}"; url = "$base/${{ env.DIRZIP }}"; sha256 = $h2; size = (Get-Item $dirzip).Length }
+            )
+          } | ConvertTo-Json -Depth 6
+          [System.IO.File]::WriteAllText("artifacts\update.json", $json, (New-Object System.Text.UTF8Encoding($false)))
+          Get-Content artifacts\update.json
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wb-session-branch-windows
-          path: dist\wb-session-branch-windows.exe
+          name: wb-session-branch-windows-x64
+          path: artifacts\*
           if-no-files-found: error
 
-      - name: Create Release
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist\wb-session-branch-windows.exe
+          name: "会话分支管理器 ${{ github.ref_name }}"
+          body: |
+            ## 会话分支管理器 ${{ github.ref_name }}
+
+            Windows x64 · Rust + Tauri 原生构建 · 单文件仅 ~4 MB
+
+            ### 下载
+            - **${{ env.ONEFILE }}** — 单文件版，开箱即用（推荐）
+            - **${{ env.DIRZIP }}** — 目录版，体积小、启动快
+
+            ### 更新日志
+            见下方自动生成的变更记录。全部本地处理，不上传任何数据。
+          files: artifacts\*
           generate_release_notes: true

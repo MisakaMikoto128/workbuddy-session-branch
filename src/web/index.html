@@ -154,6 +154,16 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .sess.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
 .sess-top{display:flex;align-items:center;gap:var(--sp-2)}
 .sess-title{font-size:var(--fs-sm);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.quick-fork{
+  flex:0 0 auto;font-size:10px;font-weight:600;color:oklch(100% 0 0);background:var(--c-purple);
+  padding:3px 8px;border-radius:5px;line-height:1.4;transition:.15s var(--ease);
+}
+.quick-fork:hover{filter:brightness(1.1);transform:translateY(-1px)}
+.variant-switch{display:flex;align-items:center;gap:2px;padding:3px;background:var(--surface-2);border-radius:var(--r-sm)}
+.variant-switch button{padding:5px 11px;border-radius:6px;font-size:var(--fs-xs);color:var(--ink-3);font-weight:600;transition:.15s var(--ease)}
+.variant-switch button:hover{color:var(--ink)}
+.variant-switch button.on{background:var(--surface);color:var(--accent);box-shadow:0 1px 3px oklch(20% 0.02 255/.12)}
+.tl-latest{font-size:var(--fs-xs);color:var(--ink-3);margin-left:auto}
 .stat{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;flex:0 0 auto}
 .stat-working{color:var(--c-orange);background:var(--orange-soft)}
 .stat-completed{color:var(--c-green);background:var(--green-soft)}
@@ -253,6 +263,10 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       <div class="step" id="st3"><span class="n">3</span>确认创建</div>
     </nav>
     <div class="spacer"></div>
+    <div class="variant-switch" id="variantSwitch" style="display:none" role="group" aria-label="数据版本">
+      <button data-v="domestic" onclick="switchVariant('domestic')">国内版</button>
+      <button data-v="international" onclick="switchVariant('international')">国际版</button>
+    </div>
     <button class="icon-btn" id="themeBtn" title="切换明暗主题" aria-label="切换明暗主题"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
     <button class="btn btn-blue" onclick="loadSessions()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>刷新</button>
   </header>
@@ -275,6 +289,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       <div class="timeline-head" id="tlHead">
         <span class="pane-title" style="text-transform:none;color:var(--ink)">消息时间线</span>
         <span class="tag" id="msgMeta">未选择会话</span>
+        <span class="tl-latest" id="tlLatest"></span>
         <div class="role-filter" id="roleFilters">
           <button class="chip on" data-r="all" onclick="setRoleFilter('all')">全部</button>
           <button class="chip" data-r="user" onclick="setRoleFilter('user')">我的提问</button>
@@ -308,8 +323,24 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 <script>
 let sessions=[], msgs=[], curSess=null, forkId=null, keepCount=0;
 let sessFilter='all', roleFilter='all';
+let headId='', curVariant='domestic';
 
+const ARG_KEYS={
+  list_messages:['sessionId'],
+  preview_branch:['sessionId','atId','title'],
+  do_branch:['sessionId','atId','title'],
+  set_variant:['id'],
+};
 function api(name,...args){
+  const tauri=(window.__TAURI__&&window.__TAURI__.invoke)||(window.__TAURI__&&window.__TAURI__.core&&window.__TAURI__.core.invoke);
+  if(tauri){
+    const payload={};
+    (ARG_KEYS[name]||[]).forEach((k,i)=>{payload[k]=args[i]??'';});
+    return tauri(name,payload).then(r=>{
+      if(typeof r==='string'){try{r=JSON.parse(r)}catch(e){}}
+      return r;
+    });
+  }
   return new Promise((res,rej)=>{
     if(!window.pywebview||!window.pywebview.api){rej(new Error('后端接口未就绪'));return;}
     window.pywebview.api[name](...args).then(r=>{
@@ -372,7 +403,7 @@ function renderSessions(){
     const stc='stat-'+(s.status==='working'?'working':s.status==='error'?'error':'completed');
     const cnt=s.count>=0?s.count+' 条':'—';
     return `<div class="sess ${curSess===s.id?'on':''}" data-id="${s.id}" tabindex="0" role="button" onclick="pickSession('${s.id}')" onkeydown="keyEnter(event,'${s.id}')">
-      <div class="sess-top"><span class="sess-title">${esc(s.title)}</span><span class="${stc}">${st}</span></div>
+      <div class="sess-top"><span class="sess-title">${esc(s.title)}</span><span class="${stc}">${st}</span><button class="quick-fork" title="从最新消息直接分支" onclick="quickFork(event,'${s.id}')">分支</button></div>
       <div class="sess-meta"><span class="path">${esc(s.cwd)}</span><span class="num">${esc(cnt)}</span><span class="num">${esc(s.updated)}</span></div>
     </div>`;
   }).join('');
@@ -388,8 +419,11 @@ async function pickSession(id){
     const r=await api('list_messages',id);
     if(!r.ok)throw new Error(r.error||'未知错误');
     msgs=r.data;
-    document.getElementById('msgMeta').textContent=r.total+' 条消息';
+    headId=r.headId||'';
+    document.getElementById('msgMeta').textContent=r.total+' 条消息 · 最新在下';
+    document.getElementById('tlLatest').textContent='已定位到最新';
     renderMsgs();
+    scrollToLatest();
   }catch(e){
     document.getElementById('msgMeta').textContent='加载失败';
     document.getElementById('msgList').innerHTML='<div class="empty"><h3>消息加载失败</h3><p>'+esc(e.message)+'</p></div>';
@@ -454,8 +488,56 @@ function reset(){
   forkId=null;keepCount=0;curSess=null;msgs=[];
   document.getElementById('newTitle').value='';
   document.getElementById('msgMeta').textContent='未选择会话';
+  document.getElementById('tlLatest').textContent='';
   document.getElementById('search').value='';
   renderSessions();renderMsgs();updateUI();setSteps(1);
+}
+function scrollToLatest(){
+  const box=document.getElementById('msgList');
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;}));
+}
+function scrollToOldest(){
+  const box=document.getElementById('msgList');
+  box.scrollTop=0;
+  document.getElementById('tlLatest').textContent='已定位到最早';
+}
+function latestId(){
+  if(headId&&msgs.some(m=>m.id===headId))return headId;
+  return msgs.length?msgs[msgs.length-1].id:'';
+}
+async function quickFork(e,id){
+  e.stopPropagation();
+  try{
+    await pickSession(id);
+    const lid=latestId();
+    if(!lid){toast('该会话暂无消息','err');return;}
+    pickMsg(lid);
+    const box=document.getElementById('msgList');
+    requestAnimationFrame(()=>{box.scrollTop=box.scrollHeight;});
+    toast('已定位到最新消息，可直接创建分支','ok');
+  }catch(err){toast('快捷分支失败：'+err.message,'err');}
+}
+async function initVariants(){
+  try{
+    const [vr,cr]=await Promise.all([api('list_variants'),api('get_variant')]);
+    if(!vr.ok||!cr.ok||!vr.data||vr.data.length<2)return;
+    curVariant=cr.id||'domestic';
+    const sw=document.getElementById('variantSwitch');
+    sw.style.display='flex';
+    sw.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.v===curVariant));
+  }catch(e){}
+}
+async function switchVariant(id){
+  if(id===curVariant)return;
+  try{
+    const r=await api('set_variant',id);
+    if(!r.ok)throw new Error(r.error||'切换失败');
+    curVariant=id;
+    document.querySelectorAll('#variantSwitch button').forEach(b=>b.classList.toggle('on',b.dataset.v===id));
+    reset();
+    await loadSessions();
+    toast('已切换到'+(id==='domestic'?'国内版':'国际版'),'ok');
+  }catch(e){toast('切换失败：'+e.message,'err');}
 }
 
 async function preview(){
@@ -521,7 +603,13 @@ document.addEventListener('keydown',e=>{
 });
 try{const t=localStorage.getItem('wb-theme');if(t==='dark')document.documentElement.dataset.theme='dark';}catch(e){}
 
-window.addEventListener('pywebviewready',()=>{loadSessions();setSteps(1);});
+function boot(){loadSessions();initVariants();setSteps(1);}
+window.addEventListener('pywebviewready',boot);
+function waitTauri(){
+  if(window.__TAURI__&&(window.__TAURI__.invoke||(window.__TAURI__.core&&window.__TAURI__.core.invoke))){boot();return;}
+  setTimeout(waitTauri,50);
+}
+if(!window.pywebview){waitTauri();}
 </script>
 </body>
 </html>

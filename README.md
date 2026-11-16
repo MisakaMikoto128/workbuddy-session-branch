@@ -2,6 +2,9 @@
 
 WorkBuddy 本地会话的分叉工具。**从对话中间任意一条消息复制出一条独立新会话，原会话完整保留。**
 
+> **Rust + Tauri 构建** · Windows x64 单文件 exe 仅 ~4 MB · 原生性能 · 全本地处理
+> [下载最新版](https://github.com/MisakaMikoto128/workbuddy-session-branch/releases/latest) · [在线主页](https://misakamikoto128.github.io/workbuddy-session-branch/)
+
 WorkBuddy 的对话在底层是一棵以 `parentId` 串联的消息树，但界面只沿当前叶子回溯显示一条链，没有暴露 Branch 按钮。内置的消息悬停「回退 / 编辑 / 刷新」会覆盖当前视图，旧分支切不回来。这个工具直接操作本地数据，把某条消息之前的上下文复制成一个全新的会话，两条线在侧边栏并存、可随时切换。
 
 <p align="center">

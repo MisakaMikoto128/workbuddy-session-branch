@@ -9,12 +9,16 @@ dist/
 build/
 *.spec.bak
 
-# PyInstaller
-*.manifest
+# Rust / Tauri
+rust/target/
+rust/gen/
+artifacts/
 
-# 测试与工具临时产物（截图目录除外）
+# 测试与工具临时产物（截图与图标目录除外）
 .playwright-cli/
 *.png
+!assets/
+!assets/*.png
 !docs/screenshots/
 !docs/screenshots/*.png
 *.yaml
