@@ -12,9 +12,11 @@ build/
 # PyInstaller
 *.manifest
 
-# 测试与工具临时产物
+# 测试与工具临时产物（截图目录除外）
 .playwright-cli/
 *.png
+!docs/screenshots/
+!docs/screenshots/*.png
 *.yaml
 *.webm
 workbuddy.db.bak-branch-*
