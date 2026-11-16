@@ -148,7 +148,19 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .scroll::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:9px;border:2px solid var(--surface)}
 .scroll::-webkit-scrollbar-track{background:transparent}
 
-.sess{padding:11px var(--sp-4);border-bottom:1px solid var(--line);cursor:pointer;position:relative;transition:background .12s var(--ease)}
+.ws-group{margin-bottom:2px}
+.ws-head{
+  display:flex;align-items:center;gap:var(--sp-2);padding:9px var(--sp-4);cursor:pointer;
+  background:var(--surface-2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2;
+  transition:background .12s var(--ease);
+}
+.ws-head:hover{background:var(--surface-inset)}
+.ws-arrow{width:12px;height:12px;flex:0 0 auto;color:var(--ink-3);transition:transform .18s var(--ease)}
+.ws-group.closed .ws-arrow{transform:rotate(-90deg)}
+.ws-name{font-size:var(--fs-xs);font-weight:700;letter-spacing:.02em;color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.ws-count{font-family:var(--mono);font-size:10px;color:var(--ink-3);background:var(--surface);border:1px solid var(--line);padding:1px 7px;border-radius:99px;flex:0 0 auto}
+.ws-group.closed .sess{display:none}
+.sess{padding:11px var(--sp-4) 11px calc(var(--sp-4) + 16px);border-bottom:1px solid var(--line);cursor:pointer;position:relative;transition:background .12s var(--ease)}
 .sess:hover{background:var(--surface-2)}
 .sess.on{background:var(--accent-soft)}
 .sess.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
@@ -387,6 +399,12 @@ function setSessFilter(f){
   document.querySelectorAll('#sessFilters .chip').forEach(c=>c.classList.toggle('on',c.dataset.f===f));
   renderSessions();
 }
+const closedGroups=new Set();
+function wsName(cwd){
+  if(!cwd)return '(无工作区)';
+  const parts=cwd.replace(/\\/g,'/').split('/').filter(Boolean);
+  return parts[parts.length-1]||cwd;
+}
 function renderSessions(){
   const q=document.getElementById('search').value.toLowerCase().trim();
   const arr=sessions.filter(s=>{
@@ -398,15 +416,35 @@ function renderSessions(){
     box.innerHTML='<div class="empty"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></div><h3>没有匹配的会话</h3><p>换个关键词，或切换上面的状态筛选。</p></div>';
     return;
   }
-  box.innerHTML=arr.map(s=>{
-    const st=s.status==='working'?'进行中':s.status==='error'?'异常':'已完成';
-    const stc='stat-'+(s.status==='working'?'working':s.status==='error'?'error':'completed');
-    const cnt=s.count>=0?s.count+' 条':'—';
-    return `<div class="sess ${curSess===s.id?'on':''}" data-id="${s.id}" tabindex="0" role="button" onclick="pickSession('${s.id}')" onkeydown="keyEnter(event,'${s.id}')">
-      <div class="sess-top"><span class="sess-title">${esc(s.title)}</span><span class="${stc}">${st}</span><button class="quick-fork" title="从最新消息直接分支" onclick="quickFork(event,'${s.id}')">分支</button></div>
-      <div class="sess-meta"><span class="path">${esc(s.cwd)}</span><span class="num">${esc(cnt)}</span><span class="num">${esc(s.updated)}</span></div>
-    </div>`;
+  const groups=new Map();
+  arr.forEach(s=>{
+    const key=s.cwd||'';
+    if(!groups.has(key))groups.set(key,[]);
+    groups.get(key).push(s);
+  });
+  const sorted=[...groups.entries()].sort((a,b)=>b[1].length-a[1].length||a[0].localeCompare(b[0]));
+  box.innerHTML=sorted.map(([cwd,list])=>{
+    const name=wsName(cwd), key=cwd||'__none__';
+    const closed=closedGroups.has(key)?' closed':'';
+    const items=list.map(s=>{
+      const st=s.status==='working'?'进行中':s.status==='error'?'异常':'已完成';
+      const stc='stat-'+(s.status==='working'?'working':s.status==='error'?'error':'completed');
+      const cnt=s.count>=0?s.count+' 条':'—';
+      return `<div class="sess ${curSess===s.id?'on':''}" data-id="${s.id}" tabindex="0" role="button" onclick="pickSession('${s.id}')" onkeydown="keyEnter(event,'${s.id}')">
+        <div class="sess-top"><span class="sess-title">${esc(s.title)}</span><span class="${stc}">${st}</span><button class="quick-fork" title="从最新消息直接分支" onclick="quickFork(event,'${s.id}')">分支</button></div>
+        <div class="sess-meta"><span class="path">${esc(s.cwd||'—')}</span><span class="num">${esc(cnt)}</span><span class="num">${esc(s.updated)}</span></div>
+      </div>`;
+    }).join('');
+    return `<div class="ws-group${closed}" data-ws="${esc(key)}">
+      <div class="ws-head" onclick="toggleGroup('${esc(key)}')" title="${esc(cwd)}">
+        <svg class="ws-arrow" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 4l4 4 4-4"/></svg>
+        <span class="ws-name">${esc(name)}</span><span class="ws-count">${list.length}</span>
+      </div>${items}</div>`;
   }).join('');
+}
+function toggleGroup(key){
+  if(closedGroups.has(key))closedGroups.delete(key);else closedGroups.add(key);
+  renderSessions();
 }
 function keyEnter(e,id){if(e.key==='Enter'||e.key===' '){e.preventDefault();pickSession(id);}}
 
@@ -603,7 +641,22 @@ document.addEventListener('keydown',e=>{
 });
 try{const t=localStorage.getItem('wb-theme');if(t==='dark')document.documentElement.dataset.theme='dark';}catch(e){}
 
-function boot(){loadSessions();initVariants();setSteps(1);}
+async function checkUpdate(){
+  try{
+    const r=await api('check_update');
+    if(!r.ok||!r.hasUpdate)return;
+    if(sessionStorage.getItem('wb-update-dismissed')===r.latest)return;
+    showModal(`<div class="modal"><h2><span class="bullet" style="background:var(--c-blue)"></span>发现新版本</h2>
+      <p>当前 ${esc(r.current)}，最新版本 <b>${esc(r.latest)}</b>。建议更新以获得新功能与修复。</p>
+      <div class="note">点击「去下载」打开 Release 页面，下载对应版本后覆盖安装即可。你的会话数据不会受影响。</div>
+      <div class="modal-btns">
+        <button class="btn btn-slate" onclick="sessionStorage.setItem('wb-update-dismissed','${esc(r.latest)}');closeModal()">稍后</button>
+        <button class="btn btn-blue" onclick="window.open('${esc(r.page)}','_blank');closeModal()">去下载</button>
+      </div>
+    </div>`);
+  }catch(e){}
+}
+function boot(){loadSessions();initVariants();setSteps(1);setTimeout(checkUpdate,2000);}
 window.addEventListener('pywebviewready',boot);
 function waitTauri(){
   if(window.__TAURI__&&(window.__TAURI__.invoke||(window.__TAURI__.core&&window.__TAURI__.core.invoke))){boot();return;}
