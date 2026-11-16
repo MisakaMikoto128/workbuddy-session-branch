@@ -30,18 +30,18 @@ jobs:
 
       - name: Normalize artifact name
         shell: pwsh
-        run: Rename-Item -Path "dist\会话分支管理器.exe" -NewName "wb-session-branch.exe"
+        run: Rename-Item -Path "dist\会话分支管理器.exe" -NewName "wb-session-branch-windows.exe"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: wb-session-branch-windows
-          path: dist\wb-session-branch.exe
+          path: dist\wb-session-branch-windows.exe
           if-no-files-found: error
 
       - name: Create Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist\wb-session-branch.exe>会话分支管理器.exe
+          files: dist\wb-session-branch-windows.exe
           generate_release_notes: true
