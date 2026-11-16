@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>会话分支管理器</title>
+<style>
+:root{
+  color-scheme:light;
+  --bg:oklch(98.4% 0.006 255);
+  --surface:oklch(100% 0 0);
+  --surface-2:oklch(96.8% 0.008 255);
+  --surface-inset:oklch(94.6% 0.01 255);
+  --line:oklch(90% 0.012 255);
+  --line-strong:oklch(82% 0.018 255);
+  --ink:oklch(23% 0.024 258);
+  --ink-2:oklch(46% 0.02 258);
+  --ink-3:oklch(63% 0.016 258);
+  --accent:oklch(52% 0.19 262);
+  --accent-soft:oklch(95% 0.035 262);
+
+  --c-blue:oklch(55% 0.17 250);
+  --c-cyan:oklch(56% 0.13 205);
+  --c-orange:oklch(72% 0.16 58);
+  --c-purple:oklch(56% 0.21 298);
+  --c-slate:oklch(52% 0.035 258);
+  --c-green:oklch(58% 0.13 155);
+  --c-red:oklch(58% 0.2 25);
+
+  --blue-soft:oklch(95% 0.035 250);
+  --cyan-soft:oklch(94% 0.03 205);
+  --orange-soft:oklch(95% 0.04 70);
+  --purple-soft:oklch(95% 0.035 298);
+  --green-soft:oklch(95% 0.045 155);
+  --red-soft:oklch(95% 0.04 25);
+
+  --mono:"Cascadia Mono","JetBrains Mono","SFMono-Regular",Consolas,monospace;
+  --sans:"Segoe UI Variable Text","Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
+
+  --fs-xs:.75rem; --fs-sm:.8125rem; --fs-base:.875rem; --fs-lg:1rem; --fs-xl:1.25rem;
+  --r-sm:6px; --r-md:10px; --r-lg:14px;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px; --sp-6:32px;
+  --ease:cubic-bezier(.22,1,.36,1);
+  --shadow:0 1px 2px oklch(20% 0.02 255/.05),0 8px 24px oklch(20% 0.02 255/.06);
+}
+[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:oklch(16% 0.014 258);
+  --surface:oklch(20% 0.016 258);
+  --surface-2:oklch(24% 0.018 258);
+  --surface-inset:oklch(27% 0.02 258);
+  --line:oklch(32% 0.02 258);
+  --line-strong:oklch(42% 0.024 258);
+  --ink:oklch(95% 0.008 258);
+  --ink-2:oklch(76% 0.014 258);
+  --ink-3:oklch(62% 0.016 258);
+  --accent:oklch(70% 0.15 262);
+  --accent-soft:oklch(28% 0.05 262);
+  --blue-soft:oklch(26% 0.06 250); --cyan-soft:oklch(26% 0.05 205);
+  --orange-soft:oklch(28% 0.06 70); --purple-soft:oklch(27% 0.06 298);
+  --green-soft:oklch(27% 0.06 155); --red-soft:oklch(27% 0.06 25);
+  --orange-ink:oklch(88% 0.06 70);
+  --shadow:0 1px 2px oklch(0% 0 0/.2),0 8px 24px oklch(0% 0 0/.28);
+}
+[data-theme="light"]{--orange-ink:var(--ink)}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:var(--sans);font-size:var(--fs-base);line-height:1.55;
+  color:var(--ink);background:var(--bg);
+  -webkit-font-smoothing:antialiased;overflow:hidden;
+}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+::selection{background:var(--accent-soft);color:var(--ink)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+.app{display:flex;flex-direction:column;height:100vh}
+
+.topbar{
+  flex:0 0 auto;display:flex;align-items:center;gap:var(--sp-4);
+  padding:var(--sp-3) var(--sp-5);background:var(--surface);
+  border-bottom:1px solid var(--line);
+}
+.brand{display:flex;align-items:center;gap:var(--sp-3);min-width:0}
+.mark{
+  width:34px;height:34px;flex:0 0 auto;border-radius:9px;
+  background:var(--ink);display:grid;place-items:center;
+}
+.mark svg{width:19px;height:19px;stroke:var(--surface)}
+.brand h1{font-size:var(--fs-lg);font-weight:600;letter-spacing:-.01em;line-height:1.2}
+.brand .sub{font-size:var(--fs-xs);color:var(--ink-3);letter-spacing:.01em}
+
+.steps{display:flex;align-items:center;gap:2px;margin-left:var(--sp-5)}
+.step{display:flex;align-items:center;gap:var(--sp-2);padding:5px 11px;border-radius:99px;color:var(--ink-3);font-size:var(--fs-sm);transition:.2s var(--ease)}
+.step .n{width:19px;height:19px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-family:var(--mono);border:1px solid var(--line-strong);transition:.2s var(--ease)}
+.step.active{color:var(--ink);background:var(--surface-2);font-weight:600}
+.step.active .n{border-color:var(--accent);background:var(--accent);color:oklch(100% 0 0)}
+.step.done{color:var(--ink-2)}
+.step.done .n{border-color:var(--green);background:var(--green);color:oklch(100% 0 0)}
+.step-sep{width:16px;height:1px;background:var(--line-strong)}
+.spacer{flex:1}
+
+.icon-btn{width:34px;height:34px;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--ink-2);transition:.15s var(--ease)}
+.icon-btn:hover{background:var(--surface-2);color:var(--ink)}
+.icon-btn svg{width:18px;height:18px}
+
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:9px 15px;border-radius:var(--r-sm);font-size:var(--fs-sm);font-weight:600;
+  color:oklch(100% 0 0);transition:transform .15s var(--ease),filter .15s var(--ease),box-shadow .15s var(--ease);
+  white-space:nowrap;
+}
+.btn svg{width:15px;height:15px;flex:0 0 auto}
+.btn:hover:not(:disabled){transform:translateY(-1px);filter:brightness(1.07);box-shadow:var(--shadow)}
+.btn:active:not(:disabled){transform:translateY(0)}
+.btn:disabled{opacity:.42;cursor:not-allowed}
+.btn-blue{background:var(--c-blue)}
+.btn-cyan{background:var(--c-cyan)}
+.btn-orange{background:var(--c-orange)}
+.btn-purple{background:var(--c-purple)}
+.btn-slate{background:var(--c-slate)}
+
+.workspace{flex:1;display:grid;grid-template-columns:332px 1fr;gap:1px;background:var(--line);min-height:0}
+.pane{background:var(--surface);display:flex;flex-direction:column;min-height:0;min-width:0}
+
+.pane-head{flex:0 0 auto;padding:var(--sp-4) var(--sp-4) var(--sp-3);border-bottom:1px solid var(--line)}
+.pane-title{display:flex;align-items:baseline;gap:var(--sp-2);font-size:var(--fs-sm);font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-2)}
+.pane-title .count{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink-3);font-weight:400;text-transform:none;letter-spacing:0}
+.pane-desc{font-size:var(--fs-xs);color:var(--ink-3);margin-top:2px}
+
+.searchbar{display:flex;align-items:center;gap:var(--sp-2);margin-top:var(--sp-3);height:36px;padding:0 11px;background:var(--surface-2);border:1px solid transparent;border-radius:var(--r-sm);transition:.15s var(--ease)}
+.searchbar:focus-within{border-color:var(--accent);background:var(--surface)}
+.searchbar svg{width:15px;height:15px;color:var(--ink-3);flex:0 0 auto}
+.searchbar input{flex:1;min-width:0;border:0;outline:0;background:none;font-size:var(--fs-sm);color:var(--ink)}
+.searchbar input::placeholder{color:var(--ink-3)}
+.searchbar kbd{font-family:var(--mono);font-size:10px;color:var(--ink-3);border:1px solid var(--line-strong);border-radius:4px;padding:1px 5px}
+
+.filters{display:flex;gap:5px;margin-top:var(--sp-3);flex-wrap:wrap}
+.chip{padding:4px 10px;border-radius:99px;font-size:var(--fs-xs);color:var(--ink-2);background:var(--surface-2);border:1px solid transparent;transition:.15s var(--ease)}
+.chip:hover{background:var(--surface-inset)}
+.chip.on{color:var(--accent);background:var(--accent-soft);border-color:var(--accent);font-weight:600}
+.chip .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:1px}
+
+.scroll{flex:1;overflow-y:auto;overscroll-behavior:contain}
+.scroll::-webkit-scrollbar{width:9px}
+.scroll::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:9px;border:2px solid var(--surface)}
+.scroll::-webkit-scrollbar-track{background:transparent}
+
+.sess{padding:11px var(--sp-4);border-bottom:1px solid var(--line);cursor:pointer;position:relative;transition:background .12s var(--ease)}
+.sess:hover{background:var(--surface-2)}
+.sess.on{background:var(--accent-soft)}
+.sess.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent)}
+.sess-top{display:flex;align-items:center;gap:var(--sp-2)}
+.sess-title{font-size:var(--fs-sm);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+.stat{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;flex:0 0 auto}
+.stat-working{color:var(--c-orange);background:var(--orange-soft)}
+.stat-completed{color:var(--c-green);background:var(--green-soft)}
+.stat-error{color:var(--c-red);background:var(--red-soft)}
+.sess-meta{display:flex;align-items:center;gap:var(--sp-2);margin-top:5px;font-size:var(--fs-xs);color:var(--ink-3)}
+.sess-meta .path{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0;font-family:var(--mono)}
+.sess-meta .num{font-family:var(--mono);white-space:nowrap}
+
+.empty{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--sp-3);padding:var(--sp-6);text-align:center;color:var(--ink-3)}
+.empty .glyph{width:52px;height:52px;border-radius:14px;background:var(--surface-2);display:grid;place-items:center}
+.empty .glyph svg{width:25px;height:25px;stroke:var(--ink-3)}
+.empty h3{font-size:var(--fs-base);color:var(--ink-2);font-weight:600}
+.empty p{font-size:var(--fs-sm);max-width:34ch;line-height:1.6}
+
+.timeline-head{display:flex;align-items:center;gap:var(--sp-3);padding:var(--sp-3) var(--sp-5);border-bottom:1px solid var(--line);background:var(--surface)}
+.timeline-head .tag{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink-3)}
+.role-filter{display:flex;gap:4px;margin-left:auto}
+
+.msg{display:grid;grid-template-columns:30px 1fr;gap:var(--sp-3);padding:10px var(--sp-5);position:relative;cursor:pointer;transition:background .12s var(--ease)}
+.msg:hover{background:var(--surface-2)}
+.msg.on{background:var(--orange-soft)}
+.msg.on::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c-orange)}
+.msg-mark{display:grid;place-items:center;width:30px;height:30px;border-radius:8px;font-size:10px;font-family:var(--mono);font-weight:700;letter-spacing:-.02em}
+.msg-mark.user{color:var(--c-blue);background:var(--blue-soft)}
+.msg-mark.assistant{color:var(--c-purple);background:var(--purple-soft)}
+.msg-mark.other{color:var(--ink-3);background:var(--surface-2)}
+.msg-body{min-width:0}
+.msg-line1{display:flex;align-items:center;gap:var(--sp-2)}
+.msg-role{font-size:var(--fs-xs);font-weight:700;letter-spacing:.03em}
+.msg-role.user{color:var(--c-blue)}
+.msg-role.assistant{color:var(--c-purple)}
+.msg-idx{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink-3)}
+.msg-time{font-family:var(--mono);font-size:var(--fs-xs);color:var(--ink-3);margin-left:auto}
+.fork-tag{margin-left:var(--sp-2);font-size:10px;font-weight:700;color:oklch(100% 0 0);background:var(--c-orange);padding:1px 7px;border-radius:5px;letter-spacing:.02em}
+.msg-text{font-size:var(--fs-sm);color:var(--ink-2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.msg.on .msg-text{color:var(--orange-ink)}
+.msg.on .msg-role,.msg.on .msg-idx,.msg.on .msg-time{color:var(--orange-ink)}
+
+.footer{
+  flex:0 0 auto;display:flex;align-items:center;gap:var(--sp-4);
+  padding:var(--sp-3) var(--sp-5);background:var(--surface);border-top:1px solid var(--line);
+}
+.pick{display:flex;align-items:center;gap:var(--sp-3);min-width:240px}
+.pick-icon{width:36px;height:36px;border-radius:9px;background:var(--orange-soft);display:grid;place-items:center;flex:0 0 auto}
+.pick-icon svg{width:18px;height:18px;stroke:var(--c-orange)}
+.pick-k{font-size:var(--fs-xs);color:var(--ink-3)}
+.pick-v{font-family:var(--mono);font-size:var(--fs-sm);font-weight:600;color:var(--ink)}
+.pick-v.idle{color:var(--ink-3);font-family:var(--sans);font-weight:400}
+.keep-badge{padding:4px 10px;border-radius:99px;font-family:var(--mono);font-size:var(--fs-xs);font-weight:600;color:var(--c-orange);background:var(--orange-soft);white-space:nowrap}
+.field{display:flex;flex-direction:column;gap:3px;flex:1;min-width:140px;max-width:420px}
+.field label{font-size:var(--fs-xs);color:var(--ink-3)}
+.field input{height:36px;padding:0 12px;border:1px solid var(--line-strong);border-radius:var(--r-sm);background:var(--surface);font:inherit;font-size:var(--fs-sm);color:var(--ink);outline:0;transition:.15s var(--ease)}
+.field input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.actions{display:flex;gap:var(--sp-2);margin-left:auto}
+
+.toast{position:fixed;top:74px;right:var(--sp-5);z-index:90;max-width:400px;padding:12px 16px;border-radius:var(--r-md);color:oklch(100% 0 0);font-size:var(--fs-sm);box-shadow:var(--shadow);opacity:0;transform:translateY(-8px);transition:.22s var(--ease);pointer-events:none}
+.toast.on{opacity:1;transform:translateY(0)}
+.toast.ok{background:var(--c-green)} .toast.err{background:var(--c-red)} .toast.info{background:var(--c-blue)}
+
+.mask{position:fixed;inset:0;background:oklch(18% 0.02 255/.45);z-index:100;display:none;align-items:center;justify-content:center;padding:var(--sp-5)}
+.mask.on{display:flex}
+.modal{background:var(--surface);border-radius:var(--r-lg);width:min(460px,100%);padding:var(--sp-5);box-shadow:var(--shadow);animation:pop .22s var(--ease)}
+@keyframes pop{from{opacity:0;transform:scale(.97) translateY(6px)}to{opacity:1;transform:none}}
+.modal h2{font-size:var(--fs-xl);font-weight:600;letter-spacing:-.01em;display:flex;align-items:center;gap:var(--sp-2)}
+.modal h2 .bullet{width:9px;height:9px;border-radius:50%}
+.modal p{font-size:var(--fs-sm);color:var(--ink-2);margin-top:var(--sp-2);line-height:1.65}
+.note{margin-top:var(--sp-4);padding:11px 13px;border-radius:var(--r-sm);background:var(--orange-soft);font-size:var(--fs-xs);color:var(--ink-2);line-height:1.6}
+.kv{margin-top:var(--sp-4);background:var(--surface-2);border-radius:var(--r-sm);padding:var(--sp-3) var(--sp-4)}
+.kv .row{display:flex;justify-content:space-between;gap:var(--sp-4);padding:5px 0;font-size:var(--fs-sm)}
+.kv .row+.row{border-top:1px solid var(--line)}
+.kv .row span:first-child{color:var(--ink-3)}
+.kv .row span:last-child{font-family:var(--mono);font-weight:600}
+.kv .row.hl span:last-child{color:var(--c-orange)}
+.code{margin-top:var(--sp-3);font-family:var(--mono);font-size:var(--fs-xs);background:var(--surface-2);padding:10px 12px;border-radius:var(--r-sm);word-break:break-all;color:var(--ink-2);line-height:1.6}
+.modal-btns{display:flex;justify-content:flex-end;gap:var(--sp-2);margin-top:var(--sp-5)}
+.ok-title{color:var(--c-green)}
+
+.skel{padding:10px var(--sp-5)}
+.skel-line{height:13px;border-radius:5px;background:linear-gradient(90deg,var(--surface-2),var(--surface-inset),var(--surface-2));background-size:200% 100%;animation:shimmer 1.4s infinite;margin:7px 0}
+@keyframes shimmer{to{background-position:-200% 0}}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><circle cx="18" cy="6" r="2.4"/><path d="M8.4 6h7.2M6 8.4v7.2M8.4 18h7.2"/></svg></div>
+      <div><h1>会话分支管理器</h1><div class="sub">从任意消息分叉出独立会话，原会话保持不变</div></div>
+    </div>
+    <nav class="steps" aria-label="操作步骤">
+      <div class="step active" id="st1"><span class="n">1</span>选择会话</div><span class="step-sep"></span>
+      <div class="step" id="st2"><span class="n">2</span>设定分支点</div><span class="step-sep"></span>
+      <div class="step" id="st3"><span class="n">3</span>确认创建</div>
+    </nav>
+    <div class="spacer"></div>
+    <button class="icon-btn" id="themeBtn" title="切换明暗主题" aria-label="切换明暗主题"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+    <button class="btn btn-blue" onclick="loadSessions()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>刷新</button>
+  </header>
+
+  <div class="workspace">
+    <section class="pane" aria-label="会话列表">
+      <div class="pane-head">
+        <div class="pane-title">会话 <span class="count" id="sessCount">—</span></div>
+        <div class="searchbar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="search" placeholder="搜索标题或路径" aria-label="搜索会话" oninput="renderSessions()"><kbd>/</kbd></div>
+        <div class="filters" id="sessFilters">
+          <button class="chip on" data-f="all" onclick="setSessFilter('all')">全部</button>
+          <button class="chip" data-f="working" onclick="setSessFilter('working')"><span class="dot" style="background:var(--c-orange)"></span>进行中</button>
+          <button class="chip" data-f="completed" onclick="setSessFilter('completed')"><span class="dot" style="background:var(--c-green)"></span>已完成</button>
+        </div>
+      </div>
+      <div class="scroll" id="sessList"></div>
+    </section>
+
+    <section class="pane" aria-label="消息时间线">
+      <div class="timeline-head" id="tlHead">
+        <span class="pane-title" style="text-transform:none;color:var(--ink)">消息时间线</span>
+        <span class="tag" id="msgMeta">未选择会话</span>
+        <div class="role-filter" id="roleFilters">
+          <button class="chip on" data-r="all" onclick="setRoleFilter('all')">全部</button>
+          <button class="chip" data-r="user" onclick="setRoleFilter('user')">我的提问</button>
+          <button class="chip" data-r="assistant" onclick="setRoleFilter('assistant')">助手回复</button>
+        </div>
+      </div>
+      <div class="scroll" id="msgList">
+        <div class="empty"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h9"/></svg></div><h3>选择左侧的一个会话</h3><p>选中后会加载它的完整消息时间线，点击任意一条即可设定为分支点。</p></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="footer">
+    <div class="pick">
+      <div class="pick-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.9" stroke-linecap="round"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M6 8.4v7.2M8.4 6h4a3 3 0 0 1 3 3v6"/></svg></div>
+      <div><div class="pick-k">分支点</div><div class="pick-v idle" id="forkLabel">尚未设定</div></div>
+    </div>
+    <span class="keep-badge" id="keepBadge" style="display:none">—</span>
+    <div class="field"><label for="newTitle">新会话标题</label><input id="newTitle" placeholder="例如：方案 B · 换用 MQTT 协议" aria-label="新会话标题"></div>
+    <div class="actions">
+      <button class="btn btn-slate" onclick="reset()">重置</button>
+      <button class="btn btn-orange" id="btnPreview" onclick="preview()" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>预览</button>
+      <button class="btn btn-purple" id="btnFork" onclick="askFork()" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>创建分支</button>
+    </div>
+  </footer>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="mask" id="mask"><div class="modal" id="modal" role="dialog" aria-modal="true"></div></div>
+
+<script>
+let sessions=[], msgs=[], curSess=null, forkId=null, keepCount=0;
+let sessFilter='all', roleFilter='all';
+
+function api(name,...args){
+  return new Promise((res,rej)=>{
+    if(!window.pywebview||!window.pywebview.api){rej(new Error('后端接口未就绪'));return;}
+    window.pywebview.api[name](...args).then(r=>{
+      if(typeof r==='string'){try{r=JSON.parse(r)}catch(e){}}
+      res(r);
+    }).catch(rej);
+  });
+}
+function toast(msg,kind='info'){
+  const el=document.getElementById('toast');
+  el.textContent=msg;el.className='toast on '+kind;
+  clearTimeout(el._t);el._t=setTimeout(()=>el.className='toast',2800);
+}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function short(s,n=8){return s?s.slice(0,n)+'…':'';}
+function cleanTitle(text){
+  if(!text)return '';
+  let t=String(text);
+  t=t.replace(/<system-reminder[\s\S]*?<\/system-reminder>/gi,' ');
+  t=t.replace(/<[^>]+>/g,' ').replace(/&lt;[^&]*&gt;/g,' ');
+  t=t.replace(/^[\s#>\-]+/,'').replace(/\s+/g,' ').trim();
+  return t;
+}
+
+function setSteps(n){
+  for(let i=1;i<=3;i++){
+    const el=document.getElementById('st'+i);
+    el.className='step'+(i<n?' done':i===n?' active':'');
+    el.querySelector('.n').textContent=i<n?'✓':i;
+  }
+}
+
+async function loadSessions(){
+  try{
+    const r=await api('list_sessions');
+    if(!r.ok)throw new Error(r.error||'未知错误');
+    sessions=r.data;
+    document.getElementById('sessCount').textContent=sessions.length;
+    renderSessions();
+  }catch(e){toast('加载会话失败：'+e.message,'err');}
+}
+function setSessFilter(f){
+  sessFilter=f;
+  document.querySelectorAll('#sessFilters .chip').forEach(c=>c.classList.toggle('on',c.dataset.f===f));
+  renderSessions();
+}
+function renderSessions(){
+  const q=document.getElementById('search').value.toLowerCase().trim();
+  const arr=sessions.filter(s=>{
+    if(sessFilter!=='all'&&s.status!==sessFilter)return false;
+    return !q||(s.title+' '+s.cwd).toLowerCase().includes(q);
+  });
+  const box=document.getElementById('sessList');
+  if(!arr.length){
+    box.innerHTML='<div class="empty"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg></div><h3>没有匹配的会话</h3><p>换个关键词，或切换上面的状态筛选。</p></div>';
+    return;
+  }
+  box.innerHTML=arr.map(s=>{
+    const st=s.status==='working'?'进行中':s.status==='error'?'异常':'已完成';
+    const stc='stat-'+(s.status==='working'?'working':s.status==='error'?'error':'completed');
+    const cnt=s.count>=0?s.count+' 条':'—';
+    return `<div class="sess ${curSess===s.id?'on':''}" data-id="${s.id}" tabindex="0" role="button" onclick="pickSession('${s.id}')" onkeydown="keyEnter(event,'${s.id}')">
+      <div class="sess-top"><span class="sess-title">${esc(s.title)}</span><span class="${stc}">${st}</span></div>
+      <div class="sess-meta"><span class="path">${esc(s.cwd)}</span><span class="num">${esc(cnt)}</span><span class="num">${esc(s.updated)}</span></div>
+    </div>`;
+  }).join('');
+}
+function keyEnter(e,id){if(e.key==='Enter'||e.key===' '){e.preventDefault();pickSession(id);}}
+
+async function pickSession(id){
+  curSess=id;forkId=null;keepCount=0;
+  document.getElementById('msgMeta').textContent='加载中…';
+  document.getElementById('msgList').innerHTML= Array.from({length:7},()=>`<div class="skel"><div class="skel-line" style="width:38%"></div><div class="skel-line" style="width:82%"></div></div>`).join('');
+  renderSessions();renderMsgs();updateUI();setSteps(2);
+  try{
+    const r=await api('list_messages',id);
+    if(!r.ok)throw new Error(r.error||'未知错误');
+    msgs=r.data;
+    document.getElementById('msgMeta').textContent=r.total+' 条消息';
+    renderMsgs();
+  }catch(e){
+    document.getElementById('msgMeta').textContent='加载失败';
+    document.getElementById('msgList').innerHTML='<div class="empty"><h3>消息加载失败</h3><p>'+esc(e.message)+'</p></div>';
+    toast('加载消息失败：'+e.message,'err');
+  }
+}
+function setRoleFilter(r){
+  roleFilter=r;
+  document.querySelectorAll('#roleFilters .chip').forEach(c=>c.classList.toggle('on',c.dataset.r===r));
+  renderMsgs();
+}
+function visibleMsgs(){return roleFilter==='all'?msgs:msgs.filter(m=>m.role===roleFilter);}
+function renderMsgs(){
+  const box=document.getElementById('msgList');
+  const arr=visibleMsgs();
+  if(!curSess){
+    box.innerHTML='<div class="empty"><div class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round"><path d="M5 7h14M5 12h14M5 17h9"/></svg></div><h3>选择左侧的一个会话</h3><p>选中后会加载它的完整消息时间线，点击任意一条即可设定为分支点。</p></div>';
+    return;
+  }
+  if(!arr.length){
+    box.innerHTML='<div class="empty"><h3>没有该角色的消息</h3><p>切换到「全部」查看所有消息。</p></div>';
+    return;
+  }
+  box.innerHTML=arr.map(m=>{
+    const isUser=m.role==='user';
+    const rc=isUser?'user':m.role==='assistant'?'assistant':'other';
+    const on=forkId===m.id;
+    return `<div class="msg ${on?'on':''}" data-id="${m.id}" tabindex="0" role="button" aria-pressed="${on}" onclick="pickMsg('${m.id}')" onkeydown="keyMsg(event,'${m.id}')">
+      <div class="msg-mark ${rc}">${isUser?'U':m.role==='assistant'?'A':'·'}</div>
+      <div class="msg-body">
+        <div class="msg-line1"><span class="msg-role ${rc}">${isUser?'我的提问':m.role==='assistant'?'助手回复':esc(m.role)}</span><span class="msg-idx">#${m.index}</span><span class="msg-time">${esc(m.time)}</span>${on?'<span class="fork-tag">分支点</span>':''}</div>
+        <div class="msg-text">${esc(cleanTitle(m.text)||m.text)}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+function keyMsg(e,id){if(e.key==='Enter'||e.key===' '){e.preventDefault();pickMsg(id);}}
+
+function pickMsg(id){
+  forkId=id;
+  const pos=msgs.findIndex(m=>m.id===id);
+  keepCount=pos<0?0:pos+1;
+  renderMsgs();updateUI();setSteps(3);
+  if(!document.getElementById('newTitle').value){
+    const m=msgs[pos];
+    const t=cleanTitle(m&&m.text).slice(0,20);
+    document.getElementById('newTitle').value='分支 · '+(t||'新方向');
+  }
+}
+function updateUI(){
+  const ok=!!(curSess&&forkId);
+  const lbl=document.getElementById('forkLabel');
+  if(forkId){lbl.textContent=short(forkId,10);lbl.classList.remove('idle');}
+  else{lbl.textContent='尚未设定';lbl.classList.add('idle');}
+  const badge=document.getElementById('keepBadge');
+  if(forkId){badge.style.display='';badge.textContent='保留 '+keepCount+' / '+msgs.length+' 条';}
+  else{badge.style.display='none';}
+  document.getElementById('btnPreview').disabled=!ok;
+  document.getElementById('btnFork').disabled=!ok;
+}
+function reset(){
+  forkId=null;keepCount=0;curSess=null;msgs=[];
+  document.getElementById('newTitle').value='';
+  document.getElementById('msgMeta').textContent='未选择会话';
+  document.getElementById('search').value='';
+  renderSessions();renderMsgs();updateUI();setSteps(1);
+}
+
+async function preview(){
+  try{
+    const r=await api('preview_branch',curSess,forkId,document.getElementById('newTitle').value.trim()||'(分支)');
+    if(!r.ok)throw new Error(r.error||'未知错误');
+    const drop=r.srcMessages-r.keptMessages;
+    showModal(`<div class="modal"><h2><span class="bullet" style="background:var(--c-orange)"></span>分支预览</h2>
+      <p>新会话将包含从第一条到分支点的完整上下文，其余 ${drop} 条消息不会被复制，原会话保持不变。</p>
+      <div class="kv">
+        <div class="row"><span>原会话消息</span><span>${r.srcMessages} 条</span></div>
+        <div class="row hl"><span>新会话保留</span><span>${r.keptMessages} 条</span></div>
+        <div class="row"><span>记录数</span><span>${r.srcRecords} → ${r.keptRecords}</span></div>
+        <div class="row"><span>新标题</span><span>${esc(r.title)}</span></div>
+      </div>
+      <div class="note">涉及的工具调用与产物快照会随分支点一并保留或截断。</div>
+      <div class="modal-btns"><button class="btn btn-slate" onclick="closeModal()">返回</button><button class="btn btn-purple" onclick="closeModal();askFork()">创建分支</button></div>
+    </div>`);
+  }catch(e){toast('预览失败：'+e.message,'err');}
+}
+function askFork(){
+  showModal(`<div class="modal"><h2><span class="bullet" style="background:var(--c-purple)"></span>确认创建分支</h2>
+    <p>将复制出一个独立新会话，原会话完整保留。数据库会在写入前自动备份。</p>
+    <div class="note">创建后需重启 WorkBuddy，新会话才会出现在侧边栏。若 WorkBuddy 仍在运行，请先完成当前任务再重启。</div>
+    <div class="modal-btns"><button class="btn btn-slate" onclick="closeModal()">取消</button><button class="btn btn-purple" onclick="doFork()">确认创建</button></div>
+  </div>`);
+}
+async function doFork(){
+  closeModal();toast('正在创建分支…','info');
+  try{
+    const r=await api('do_branch',curSess,forkId,document.getElementById('newTitle').value.trim()||'(分支)');
+    if(!r.ok)throw new Error(r.error||'未知错误');
+    showModal(`<div class="modal"><h2 class="ok-title"><span class="bullet" style="background:var(--c-green)"></span>分支已创建</h2>
+      <p>${esc(r.title)} · 已保留 ${r.keptMessages} 条消息。重启 WorkBuddy 后即可在侧边栏看到新会话。</p>
+      <div class="kv"><div class="row"><span>新会话 ID</span><span style="font-size:.75rem">${esc(short(r.newId,18))}</span></div></div>
+      <div class="code">${esc(r.newId)}</div>
+      <div class="kv" style="background:transparent;padding:10px 0 0"><div class="row" style="border:0"><span>数据库备份</span></div></div>
+      <div class="code">${esc(r.backup)}</div>
+      <div class="modal-btns"><button class="btn btn-blue" onclick="closeModal();reset();loadSessions()">完成</button></div>
+    </div>`);
+  }catch(e){toast('创建失败：'+e.message,'err');}
+}
+
+function showModal(html){
+  document.getElementById('modal').innerHTML=html;
+  document.getElementById('mask').classList.add('on');
+  const b=document.querySelector('.modal .btn');if(b)b.focus();
+}
+function closeModal(){document.getElementById('mask').classList.remove('on');}
+document.getElementById('mask').addEventListener('click',e=>{if(e.target.id==='mask')closeModal();});
+
+document.getElementById('themeBtn').addEventListener('click',()=>{
+  const h=document.documentElement;
+  const next=h.dataset.theme==='light'?'dark':'light';
+  h.dataset.theme=next;
+  try{localStorage.setItem('wb-theme',next);}catch(e){}
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){closeModal();return;}
+  const typing=/input|textarea/i.test(document.activeElement.tagName);
+  if(e.key==='/'&&!typing){e.preventDefault();document.getElementById('search').focus();}
+  if((e.ctrlKey||e.metaKey)&&e.key==='Enter'&&forkId&&!document.getElementById('btnFork').disabled){e.preventDefault();askFork();}
+});
+try{const t=localStorage.getItem('wb-theme');if(t==='dark')document.documentElement.dataset.theme='dark';}catch(e){}
+
+window.addEventListener('pywebviewready',()=>{loadSessions();setSteps(1);});
+</script>
+</body>
+</html>
