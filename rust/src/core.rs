@@ -1,7 +1,7 @@
 use chrono::Local;
 use rusqlite::Connection;
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -278,42 +278,62 @@ pub fn list_messages(v: Variant, session_id: &str) -> Result<Value, String> {
     }))
 }
 
-fn build_branch(records: &[Value], at_id: Option<&str>) -> Vec<Value> {
-    let by_id: std::collections::HashMap<String, &Value> = records
-        .iter()
-        .filter_map(|r| r.get("id").and_then(|x| x.as_str()).map(|id| (id.to_string(), r)))
-        .collect();
-    let ms = messages_of(records);
+fn build_branch(records: &[Value], at_id: Option<&str>) -> Result<Vec<Value>, String> {
+    let at = match at_id {
+        None => return Ok(records.to_vec()),
+        Some(s) => s,
+    };
 
-    let mut keep_ids = std::collections::HashSet::new();
-    if let Some(at) = at_id {
-        let mut cur = ms.iter().find(|m| m.id.starts_with(at) || m.text.contains(at));
-        while let Some(m) = cur {
-            keep_ids.insert(m.id.clone());
-            cur = if m.parent.is_empty() {
-                None
-            } else {
-                ms.iter().find(|x| x.id == m.parent)
-            };
+    let by_id: HashMap<String, &Value> = records
+        .iter()
+        .filter_map(|r| {
+            r.get("id")
+                .and_then(|x| x.as_str())
+                .map(|id| (id.to_string(), r))
+        })
+        .collect();
+
+    let start = records
+        .iter()
+        .find(|r| r.get("id").and_then(|x| x.as_str()) == Some(at))
+        .or_else(|| {
+            records.iter().find(|r| {
+                r.get("id")
+                    .and_then(|x| x.as_str())
+                    .map(|id| id.starts_with(at))
+                    .unwrap_or(false)
+            })
+        })
+        .or_else(|| {
+            records.iter().find(|r| {
+                r.get("type").and_then(|x| x.as_str()) == Some("message")
+                    && message_preview(r).contains(at)
+            })
+        })
+        .ok_or_else(|| format!("找不到分支点: {}", at))?;
+
+    let mut keep_ids: HashSet<String> = HashSet::new();
+    let mut cur = Some(start);
+    while let Some(r) = cur {
+        if let Some(id) = r.get("id").and_then(|x| x.as_str()) {
+            if !keep_ids.insert(id.to_string()) {
+                break;
+            }
         }
+        let parent = r.get("parentId").and_then(|x| x.as_str()).unwrap_or("");
+        cur = if parent.is_empty() {
+            None
+        } else {
+            by_id.get(parent).copied()
+        };
     }
 
-    records
+    Ok(records
         .iter()
         .filter(|r| {
             let t = r.get("type").and_then(|x| x.as_str()).unwrap_or("");
             if t == "session-meta" || t == "ai-title" {
                 return true;
-            }
-            if at_id.is_none() {
-                return true;
-            }
-            if t == "message" {
-                return r
-                    .get("id")
-                    .and_then(|x| x.as_str())
-                    .map(|id| keep_ids.contains(id))
-                    .unwrap_or(false);
             }
             if t == "file-history-snapshot" {
                 return r
@@ -322,23 +342,13 @@ fn build_branch(records: &[Value], at_id: Option<&str>) -> Vec<Value> {
                     .map(|id| keep_ids.contains(id))
                     .unwrap_or(false);
             }
-            let mut pid = r.get("parentId").and_then(|x| x.as_str()).unwrap_or("");
-            let mut seen = std::collections::HashSet::new();
-            while !pid.is_empty() && !seen.contains(pid) {
-                if keep_ids.contains(pid) {
-                    return true;
-                }
-                seen.insert(pid);
-                pid = by_id
-                    .get(pid)
-                    .and_then(|p| p.get("parentId"))
-                    .and_then(|x| x.as_str())
-                    .unwrap_or("");
-            }
-            false
+            r.get("id")
+                .and_then(|x| x.as_str())
+                .map(|id| keep_ids.contains(id))
+                .unwrap_or(false)
         })
         .cloned()
-        .collect()
+        .collect())
 }
 
 pub fn preview_branch(
@@ -348,7 +358,7 @@ pub fn preview_branch(
     title: &str,
 ) -> Result<Value, String> {
     let recs = parse_records(v, session_id)?;
-    let kept = build_branch(&recs, if at_id.is_empty() { None } else { Some(at_id) });
+    let kept = build_branch(&recs, if at_id.is_empty() { None } else { Some(at_id) })?;
     Ok(json!({
         "ok": true,
         "srcMessages": messages_of(&recs).len(),
@@ -367,7 +377,7 @@ pub fn do_branch(
 ) -> Result<Value, String> {
     let src_path = find_jsonl(v, session_id)?;
     let recs = parse_records(v, session_id)?;
-    let kept = build_branch(&recs, if at_id.is_empty() { None } else { Some(at_id) });
+    let kept = build_branch(&recs, if at_id.is_empty() { None } else { Some(at_id) })?;
     let new_id = uuid::Uuid::new_v4().to_string();
 
     let db_path = v.db();
@@ -680,5 +690,74 @@ pub fn restore_session(v: Variant, session_id: &str) -> Result<Value, String> {
     )
     .map_err(|e| format!("恢复会话失败: {}", e))?;
     Ok(json!({ "ok": true, "id": session_id }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn msg(id: &str, parent: &str, text: &str) -> Value {
+        json!({
+            "type": "message",
+            "id": id,
+            "parentId": parent,
+            "content": [{"type": "text", "text": text}],
+        })
+    }
+
+    #[test]
+    fn cross_type_parent_chain_is_kept() {
+        let records = vec![
+            msg("m1", "", "first"),
+            json!({"type": "reasoning", "id": "r1", "parentId": "m1"}),
+            json!({"type": "function_call_result", "id": "fc2", "parentId": "r1"}),
+            msg("m3", "fc2", "third"),
+            json!({"type": "credit-usage", "id": "cu4", "parentId": "m3"}),
+            msg("orphan", "missing-parent", "orphan"),
+            json!({"type": "session-meta"}),
+            json!({"type": "ai-title", "title": "demo"}),
+            json!({"type": "file-history-snapshot", "messageId": "m1"}),
+        ];
+        let kept = build_branch(&records, Some("m3")).unwrap();
+        let ids: Vec<&str> = kept
+            .iter()
+            .filter_map(|r| r.get("id").and_then(|x| x.as_str()))
+            .collect();
+        assert!(ids.contains(&"m1"));
+        assert!(ids.contains(&"r1"));
+        assert!(ids.contains(&"fc2"));
+        assert!(ids.contains(&"m3"));
+        assert!(!ids.contains(&"cu4"));
+        assert!(!ids.contains(&"orphan"));
+        let types: Vec<&str> = kept
+            .iter()
+            .filter_map(|r| r.get("type").and_then(|x| x.as_str()))
+            .collect();
+        assert!(types.contains(&"session-meta"));
+        assert!(types.contains(&"ai-title"));
+        assert!(types.contains(&"file-history-snapshot"));
+    }
+
+    #[test]
+    fn empty_at_keeps_all() {
+        let records = vec![
+            msg("a", "", "a"),
+            json!({"type": "reasoning", "id": "b", "parentId": "a"}),
+        ];
+        assert_eq!(build_branch(&records, None).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn missing_branch_point_is_error() {
+        let records = vec![msg("a", "", "hello")];
+        assert!(build_branch(&records, Some("nope")).is_err());
+    }
+
+    #[test]
+    fn prefix_and_text_match() {
+        let records = vec![msg("abc123-long-id", "", "unique marker text")];
+        assert_eq!(build_branch(&records, Some("abc123")).unwrap().len(), 1);
+        assert_eq!(build_branch(&records, Some("unique marker")).unwrap().len(), 1);
+    }
 }
 
