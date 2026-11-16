@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+dist/
+build/
+*.spec.bak
+
+# PyInstaller
+*.manifest
+
+# 测试与工具临时产物
+.playwright-cli/
+*.png
+*.yaml
+*.webm
+workbuddy.db.bak-branch-*
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+.DS_Store
+Desktop.ini
+Thumbs.db
+*.log
+
+# 项目本地运行痕迹
+*.bak
