@@ -116,6 +116,35 @@ fn do_branch(session_id: String, at_id: String, title: String, state: tauri::Sta
     }
 }
 
+#[tauri::command]
+fn migrate_session(session_id: String, target: String, title_hint: String, state: tauri::State<'_, AppState>) -> Value {
+    let src = state.current();
+    let dst = match Variant::from_id(&target) {
+        Some(v) => v,
+        None => return json!({ "ok": false, "error": format!("未知目标版本: {}", target) }),
+    };
+    match core::migrate_session(src, dst, &session_id, &title_hint) {
+        Ok(v) => v,
+        Err(e) => json!({ "ok": false, "error": e }),
+    }
+}
+
+#[tauri::command]
+fn delete_session(session_id: String, state: tauri::State<'_, AppState>) -> Value {
+    match core::delete_session(state.current(), &session_id) {
+        Ok(v) => v,
+        Err(e) => json!({ "ok": false, "error": e }),
+    }
+}
+
+#[tauri::command]
+fn restore_session(session_id: String, state: tauri::State<'_, AppState>) -> Value {
+    match core::restore_session(state.current(), &session_id) {
+        Ok(v) => v,
+        Err(e) => json!({ "ok": false, "error": e }),
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(AppState {
@@ -130,7 +159,10 @@ fn main() {
             list_sessions,
             list_messages,
             preview_branch,
-            do_branch
+            do_branch,
+            migrate_session,
+            delete_session,
+            restore_session
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 启动失败");

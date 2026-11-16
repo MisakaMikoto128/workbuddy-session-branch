@@ -1,6 +1,7 @@
 use chrono::Local;
 use rusqlite::Connection;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -448,3 +449,236 @@ pub fn do_branch(
         "file": dst_path.to_string_lossy(),
     }))
 }
+
+fn session_columns(con: &Connection) -> Result<Vec<String>, String> {
+    let mut s = con
+        .prepare("PRAGMA table_info(sessions)")
+        .map_err(|e| e.to_string())?;
+    let rows = s
+        .query_map([], |r| r.get::<_, String>(1))
+        .map_err(|e| e.to_string())?;
+    Ok(rows.filter_map(|x| x.ok()).collect())
+}
+
+fn val_str(v: Option<&rusqlite::types::Value>) -> Option<&str> {
+    match v {
+        Some(rusqlite::types::Value::Text(s)) => Some(s.as_str()),
+        _ => None,
+    }
+}
+
+fn read_session_row(
+    con: &Connection,
+    id: &str,
+    cols: &[String],
+) -> Result<HashMap<String, rusqlite::types::Value>, String> {
+    let sql = format!("select {} from sessions where id=?", cols.join(","));
+    let mut s = con.prepare(&sql).map_err(|e| e.to_string())?;
+    let mut rows = s.query([id]).map_err(|e| e.to_string())?;
+    match rows.next().map_err(|e| e.to_string())? {
+        Some(r) => {
+            let mut map = HashMap::new();
+            for (i, col) in cols.iter().enumerate() {
+                let v = r
+                    .get_ref(i)
+                    .map(|x| rusqlite::types::Value::from(x))
+                    .map_err(|e| e.to_string())?;
+                map.insert(col.clone(), v);
+            }
+            Ok(map)
+        }
+        None => Err("源会话不在 sessions 表中".to_string()),
+    }
+}
+
+fn convert_cwd(cwd: &str, dst: Variant) -> String {
+    match dst {
+        Variant::Domestic => cwd.replace('/', "\\"),
+        Variant::International => cwd.replace('\\', "/"),
+    }
+}
+
+fn path_slug(cwd: &str) -> String {
+    let s: String = cwd
+        .chars()
+        .map(|c| if c == ':' || c == '\\' || c == '/' { '-' } else { c })
+        .collect();
+    if s.trim().is_empty() {
+        "migrated".into()
+    } else {
+        s
+    }
+}
+
+fn resolve_user_id(
+    dst: Variant,
+    con: &Connection,
+    cols: &[String],
+    src_row: &HashMap<String, rusqlite::types::Value>,
+) -> Option<String> {
+    if cols.iter().any(|c| c == "user_id") {
+        if let Ok(mut s) = con.prepare(
+            "select user_id from sessions where user_id is not null and user_id<>'' limit 1",
+        ) {
+            if let Ok(mut rows) = s.query([]) {
+                if let Ok(Some(r)) = rows.next() {
+                    if let Ok(uid) = r.get::<_, String>(0) {
+                        if !uid.is_empty() {
+                            return Some(uid);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if let Ok(entries) = fs::read_dir(dst.base()) {
+        for e in entries.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if let Some(rest) = name.strip_prefix("user-") {
+                if !rest.is_empty() && e.path().is_dir() {
+                    return Some(rest.to_string());
+                }
+            }
+        }
+    }
+    val_str(src_row.get("user_id")).map(|s| s.to_string())
+}
+
+pub fn migrate_session(
+    src: Variant,
+    dst: Variant,
+    session_id: &str,
+    title_hint: &str,
+) -> Result<Value, String> {
+    if src == dst {
+        return Err("源版本与目标版本不能相同".to_string());
+    }
+    let src_db = src.db();
+    let dst_db = dst.db();
+    if !src_db.exists() {
+        return Err(format!("源数据库不存在: {}", src_db.display()));
+    }
+    if !dst_db.exists() {
+        return Err(format!("目标数据库不存在: {}", dst_db.display()));
+    }
+
+    let recs = parse_records(src, session_id)?;
+    let scon = Connection::open_with_flags(&src_db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(|e| format!("打开源数据库失败: {}", e))?;
+    let src_cols = session_columns(&scon)?;
+    let src_row = read_session_row(&scon, session_id, &src_cols)?;
+
+    let mut dcon = Connection::open(&dst_db).map_err(|e| format!("打开目标数据库失败: {}", e))?;
+    let dst_cols = session_columns(&dcon)?;
+    let target_uid = resolve_user_id(dst, &dcon, &dst_cols, &src_row);
+
+    let new_cwd = convert_cwd(val_str(src_row.get("cwd")).unwrap_or(""), dst);
+    let title = if title_hint.trim().is_empty() {
+        val_str(src_row.get("custom_title"))
+            .or_else(|| val_str(src_row.get("title")))
+            .unwrap_or("(无标题)")
+            .to_string()
+    } else {
+        title_hint.to_string()
+    };
+
+    let new_id = uuid::Uuid::new_v4().to_string();
+    let now = Local::now().timestamp_millis();
+
+    let stamp = Local::now().format("%Y%m%d-%H%M%S");
+    let backup = dst
+        .base()
+        .join(format!("workbuddy.db.bak-migrate-{}", stamp));
+    dcon.backup(rusqlite::DatabaseName::Main, &backup, None)
+        .map_err(|e| format!("备份目标数据库失败: {}", e))?;
+
+    let mut values: Vec<rusqlite::types::Value> = Vec::new();
+    for col in &dst_cols {
+        let raw = src_row
+            .get(col)
+            .cloned()
+            .unwrap_or(rusqlite::types::Value::Null);
+        let val = match col.as_str() {
+            "id" => rusqlite::types::Value::Text(new_id.clone()),
+            "user_id" => match &target_uid {
+                Some(u) => rusqlite::types::Value::Text(u.clone()),
+                None => raw,
+            },
+            "cwd" => rusqlite::types::Value::Text(new_cwd.clone()),
+            "title" | "custom_title" => rusqlite::types::Value::Text(title.clone()),
+            "created_at" | "updated_at" | "last_activity_at" => {
+                rusqlite::types::Value::Integer(now)
+            }
+            "status" => rusqlite::types::Value::Text("completed".into()),
+            "deleted_at" | "buddy_snapshot_id" => rusqlite::types::Value::Null,
+            "unread" | "agent_dirty" => rusqlite::types::Value::Integer(0),
+            _ => raw,
+        };
+        values.push(val);
+    }
+    let placeholders = vec!["?"; dst_cols.len()].join(",");
+    let sql = format!(
+        "insert into sessions ({}) values ({})",
+        dst_cols.join(","),
+        placeholders
+    );
+    let params: Vec<&dyn rusqlite::ToSql> = values
+        .iter()
+        .map(|v| v as &dyn rusqlite::ToSql)
+        .collect();
+    let tx = dcon.transaction().map_err(|e| e.to_string())?;
+    tx.execute(&sql, params.as_slice())
+        .map_err(|e| format!("写入目标会话失败: {}", e))?;
+    tx.commit().map_err(|e| e.to_string())?;
+
+    let dst_path = dst.projects().join(path_slug(&new_cwd)).join(format!("{}.jsonl", new_id));
+    fs::create_dir_all(dst_path.parent().unwrap()).map_err(|e| format!("创建目标目录失败: {}", e))?;
+    let mut f = File::create(&dst_path).map_err(|e| format!("创建会话文件失败: {}", e))?;
+    for r in &recs {
+        let mut obj = r.clone();
+        obj["sessionId"] = json!(new_id);
+        if let Some(c) = obj.get("cwd").and_then(|x| x.as_str()) {
+            obj["cwd"] = json!(convert_cwd(c, dst));
+        }
+        writeln!(f, "{}", serde_json::to_string(&obj).unwrap()).map_err(|e| e.to_string())?;
+    }
+
+    Ok(json!({
+        "ok": true,
+        "newId": new_id,
+        "title": title,
+        "keptMessages": messages_of(&recs).len(),
+        "backup": backup.to_string_lossy(),
+        "file": dst_path.to_string_lossy(),
+    }))
+}
+
+pub fn delete_session(v: Variant, session_id: &str) -> Result<Value, String> {
+    let db = v.db();
+    if !db.exists() {
+        return Err(format!("数据库不存在: {}", db.display()));
+    }
+    let con = Connection::open(&db).map_err(|e| format!("打开数据库失败: {}", e))?;
+    let now = Local::now().timestamp_millis();
+    con.execute(
+        "update sessions set deleted_at=?1 where id=?2",
+        rusqlite::params![now, session_id],
+    )
+    .map_err(|e| format!("删除会话失败: {}", e))?;
+    Ok(json!({ "ok": true, "id": session_id }))
+}
+
+pub fn restore_session(v: Variant, session_id: &str) -> Result<Value, String> {
+    let db = v.db();
+    if !db.exists() {
+        return Err(format!("数据库不存在: {}", db.display()));
+    }
+    let con = Connection::open(&db).map_err(|e| format!("打开数据库失败: {}", e))?;
+    con.execute(
+        "update sessions set deleted_at=NULL where id=?1",
+        rusqlite::params![session_id],
+    )
+    .map_err(|e| format!("恢复会话失败: {}", e))?;
+    Ok(json!({ "ok": true, "id": session_id }))
+}
+
