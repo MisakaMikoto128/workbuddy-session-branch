@@ -71,24 +71,33 @@ WorkBuddy 的对话在底层是一棵以 `parentId` 串联的消息树，但界�
 ## 功能一览
 
 - 三步流程，进度始终可见
+- **会话按工作区（cwd）折叠分组**，组头显示工作区名与会话数，可展开/收起
 - 会话搜索 / 状态筛选，消息按角色过滤
-- 选分支点即时显示保留数
+- 选分支点即时显示保留数；列表项「分支」按钮可直接从最新消息分叉
+- 国内版 / 国际版数据一键切换（`.workbuddy` / `.workbuddy-ai`）
+- 启动时检查新版本，提示并跳转下载（数据来自 Release 的 `update.json`）
 - 创建前自动备份数据库，失败回滚
 - 明暗主题、键盘操作（`/` 搜索、`Ctrl+Enter` 创建、`Esc` 关闭）
 - 完整空状态 / 加载骨架 / 错误态，WCAG AA 对比、焦点可见、减少动效偏好
 
 ## 安装与运行
 
-需要 Python 3.10+。
+直接从 [Releases](https://github.com/MisakaMikoto128/workbuddy-session-branch/releases/latest) 下载 Windows x64 版本：
 
-```bash
-pip install -r requirements.txt
-python src/app.py
-```
+- `wb-session-branch-windows-x64-onefile.exe` — 单文件版，双击即用（推荐，约 5 MB）
+- `wb-session-branch-windows-x64-dir.zip` — 目录版，解压运行
 
-Windows 用户可双击根目录的 `启动界面.bat`（按其中说明配置 Python 路径，或直接使用打包版 exe）。
+无需安装 Python 或运行时，使用系统自带的 WebView2（Windows 10/11 均已内置）。
 
 **执行前请完全退出 WorkBuddy**，避免写入时与桌面端缓存冲突；创建完成后重启即可看到新会话。
+
+从源码构建需要 Rust 1.77+ 和 tauri-cli：
+
+```bash
+cargo install tauri-cli --version '^2'
+cd rust && cargo tauri build --no-bundle
+# 产物：rust/target/release/wb-session-branch.exe
+```
 
 ## 隐私与演示模式
 
@@ -99,9 +108,9 @@ python src/serve.py --port 8777 --demo
 # 浏览器打开 http://127.0.0.1:8777/
 ```
 
-不带 `--demo` 则是真实后端，会连本机的 `~/.workbuddy-ai` 数据——本地开发/测试时请注意区分。两种模式的前端代码完全相同。
+不带 `--demo` 则是旧版 Python 后端（保留用于回归测试），默认连 `~/.workbuddy-ai`。正式发布版是 Rust/Tauri，两种数据版本都支持。
 
-浏览器直连的实现原理：PyWebView 桌面端通过 `chrome.webview.postMessage` 桥接 API（浏览器无此对象），`serve.py` 复用同一个 `Api` 后端，用标准库 HTTP 暴露接口并在返回页面时注入兼容 shim，前端零改动，Playwright 打到的就是真实后端（或演示后端）。
+浏览器测试服务 `serve.py` 用标准库 HTTP 暴露接口并注入兼容 shim，前端 `api()` 自动识别环境：桌面版走 Tauri `invoke`，浏览器走 fetch，同一份前端代码两边都能跑。
 
 ## 测试
 
@@ -110,33 +119,37 @@ python src/serve.py --port 8777        # 或 --demo
 python tests/test_ui.py                # 另开终端
 ```
 
-## Windows 自动编译
+## Windows 自动编译与更新管理
 
-`.github/workflows/build-windows.yml` 在推送 `v*` tag 或手动触发时，用 PyInstaller 在 `windows-latest` 上打包单文件 exe，上传为 Actions artifact，并附着到对应 Release。
+`.github/workflows/build-windows.yml` 在推送 `v*` tag 或手动触发时，用 Tauri 在 `windows-latest` 上编译，产出：
+
+- `wb-session-branch-windows-x64-onefile.exe` — 单文件版
+- `wb-session-branch-windows-x64-dir.zip` — 目录版
+- `update.json` — 版本、发布日期、各产物的 SHA256 与大小
+
+exe 版本号由 `build.rs` 从 git tag 注入，保证与发布 tag 一致；应用启动时读取 `update.json` 检查新版本。
 
 ```bash
-git tag v1.0.2
-git push origin v1.0.2
+git tag v2.1.0
+git push origin v2.1.0
 ```
-
-本地打包：`pyinstaller scripts/build.spec`，产物在 `dist/`。
-
-从 [Releases](https://github.com/MisakaMikoto128/workbuddy-session-branch/releases) 下载 `wb-session-branch-windows.exe` 即可直接运行。
 
 ## 项目结构
 
 ```
-src/
-  wb_branch.py   核心分支逻辑（逆向 WorkBuddy 会话存储）
-  app.py         PyWebView 后端 API
-  serve.py       浏览器直连测试/演示服务
-  demo_data.py   虚构演示数据（隐私隔离）
-  web/index.html 前端界面（设计 token + 三步流程）
-tests/
-  test_ui.py     真实后端回归测试
-docs/screenshots/ README 配图（全部演示数据）
-scripts/         打包配置
-.impeccable.md   设计上下文与设计原则
+rust/
+  src/core.rs      分支核心逻辑（rusqlite + JSONL 树，双版本数据）
+  src/main.rs      Tauri commands（含 check_update）
+  build.rs         从 git tag 注入版本号
+  tauri.conf.json  Tauri 配置
+src/web/index.html 前端界面（设计 token + 三步流程 + 工作区分组）
+src/               旧版 Python 后端（仅用于浏览器回归测试）
+  wb_branch.py / app.py / serve.py / demo_data.py
+tests/test_ui.py   回归测试
+assets/            原创 logo 与多尺寸图标
+docs/site/         GitHub Pages 下载页
+docs/screenshots/  README 配图（全部演示数据）
+.impeccable.md     设计上下文与设计原则
 ```
 
 ## License
