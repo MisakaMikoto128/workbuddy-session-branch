@@ -369,20 +369,12 @@ const ARG_KEYS={
 };
 function api(name,...args){
   const tauri=(window.__TAURI__&&window.__TAURI__.invoke)||(window.__TAURI__&&window.__TAURI__.core&&window.__TAURI__.core.invoke);
-  if(tauri){
-    const payload={};
-    (ARG_KEYS[name]||[]).forEach((k,i)=>{payload[k]=args[i]??'';});
-    return tauri(name,payload).then(r=>{
-      if(typeof r==='string'){try{r=JSON.parse(r)}catch(e){}}
-      return r;
-    });
-  }
-  return new Promise((res,rej)=>{
-    if(!window.pywebview||!window.pywebview.api){rej(new Error('后端接口未就绪'));return;}
-    window.pywebview.api[name](...args).then(r=>{
-      if(typeof r==='string'){try{r=JSON.parse(r)}catch(e){}}
-      res(r);
-    }).catch(rej);
+  if(!tauri)return Promise.reject(new Error('后端接口未就绪'));
+  const payload={};
+  (ARG_KEYS[name]||[]).forEach((k,i)=>{payload[k]=args[i]??'';});
+  return tauri(name,payload).then(r=>{
+    if(typeof r==='string'){try{r=JSON.parse(r)}catch(e){}}
+    return r;
   });
 }
 function toast(msg,kind='info'){
@@ -770,12 +762,11 @@ async function checkUpdate(){
   }catch(e){}
 }
 function boot(){loadSessions();initVariants();setSteps(1);setTimeout(checkUpdate,2000);}
-window.addEventListener('pywebviewready',boot);
 function waitTauri(){
   if(window.__TAURI__&&(window.__TAURI__.invoke||(window.__TAURI__.core&&window.__TAURI__.core.invoke))){boot();return;}
   setTimeout(waitTauri,50);
 }
-if(!window.pywebview){waitTauri();}
+waitTauri();
 </script>
 </body>
 </html>

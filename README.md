@@ -101,24 +101,16 @@ cd rust && cargo tauri build --no-bundle
 # 产物：rust/target/release/wb-session-branch.exe
 ```
 
-## 隐私与演示模式
+## 隐私
 
-工具只读取并复制本机 WorkBuddy 数据，不联网、不上传。README 的所有截图都来自一个隔离的**演示模式**：会话、路径、消息全部虚构（`demo-` 前缀），`do_branch` 在演示模式下为纯内存操作，**绝不接触真实数据库**。
+工具只读取并复制本机 WorkBuddy 数据；唯一的联网行为是启动时检查更新（拉取 Release 的 `update.json`），不上传任何会话内容。
 
-```bash
-python src/serve.py --port 8777 --demo
-# 浏览器打开 http://127.0.0.1:8777/
-```
-
-不带 `--demo` 则是旧版 Python 后端（保留用于回归测试），默认连 `~/.workbuddy-ai`。正式发布版是 Rust/Tauri，两种数据版本都支持。
-
-浏览器测试服务 `serve.py` 用标准库 HTTP 暴露接口并注入兼容 shim，前端 `api()` 自动识别环境：桌面版走 Tauri `invoke`，浏览器走 fetch，同一份前端代码两边都能跑。
+README 的所有截图来自一套虚构演示数据（会话、路径、消息均为假数据），不含任何真实用户信息。
 
 ## 测试
 
 ```bash
-python src/serve.py --port 8777        # 或 --demo
-python tests/test_ui.py                # 另开终端
+cd rust && cargo test     # 分支逻辑单测（parentId 链回溯等）
 ```
 
 ## Windows 自动编译与更新管理
@@ -145,9 +137,6 @@ rust/
   build.rs         从 git tag 注入版本号
   tauri.conf.json  Tauri 配置
 src/web/index.html 前端界面（设计 token + 三步流程 + 工作区分组）
-src/               旧版 Python 后端（仅用于浏览器回归测试）
-  wb_branch.py / app.py / serve.py / demo_data.py
-tests/test_ui.py   回归测试
 assets/            原创 logo 与多尺寸图标
 docs/site/         GitHub Pages 下载页
 docs/screenshots/  README 配图（全部演示数据）
