@@ -5,6 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
+use std::time::UNIX_EPOCH;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Variant {
@@ -92,6 +93,7 @@ pub fn list_sessions(v: Variant) -> Result<Value, String> {
     if !db.exists() {
         return Err(format!("数据库不存在: {}", db.display()));
     }
+    let counts = build_count_index(v);
     let con = Connection::open_with_flags(&db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
         .map_err(|e| format!("打开数据库失败: {}", e))?;
     let mut stmt = con
@@ -118,7 +120,7 @@ pub fn list_sessions(v: Variant) -> Result<Value, String> {
     let mut out = Vec::new();
     for r in rows {
         let r = r.map_err(|e| e.to_string())?;
-        let count = count_messages(v, &r.0);
+        let count = *counts.get(&r.0).unwrap_or(&-1);
         out.push(json!({
             "id": r.0,
             "title": r.2.or(r.1).unwrap_or_else(|| "(无标题)".into()),
@@ -150,20 +152,91 @@ fn find_jsonl(v: Variant, session_id: &str) -> Result<PathBuf, String> {
     Err(format!("找不到会话文件: {}.jsonl", session_id))
 }
 
-fn count_messages(v: Variant, session_id: &str) -> i64 {
-    find_jsonl(v, session_id)
-        .ok()
-        .and_then(|p| {
-            let f = File::open(p).ok()?;
-            let mut n = 0i64;
-            for line in BufReader::new(f).lines().flatten() {
-                if line.contains("\"type\": \"message\"") || line.contains("\"type\":\"message\"") {
-                    n += 1;
-                }
-            }
-            Some(n)
+fn file_fingerprint(p: &std::path::Path) -> Option<(i64, u64)> {
+    let m = fs::metadata(p).ok()?;
+    let modified = m.modified().ok()?.duration_since(UNIX_EPOCH).ok()?.as_millis() as i64;
+    Some((modified, m.len()))
+}
+
+fn scan_message_count(p: &std::path::Path) -> i64 {
+    File::open(p)
+        .map(|f| {
+            BufReader::new(f)
+                .lines()
+                .flatten()
+                .filter(|l| l.contains("\"type\": \"message\"") || l.contains("\"type\":\"message\""))
+                .count() as i64
         })
         .unwrap_or(-1)
+}
+
+fn scan_dir_counts(
+    dir: &std::path::Path,
+    cache: &mut HashMap<String, serde_json::Value>,
+    out: &mut HashMap<String, i64>,
+) -> bool {
+    let entries = match fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+    let mut changed = false;
+    for e in entries.flatten() {
+        let p = e.path();
+        if !p.is_dir() && p.extension().and_then(|x| x.to_str()) == Some("jsonl") {
+            let key = p.to_string_lossy().to_string();
+            let fp = match file_fingerprint(&p) {
+                Some(x) => x,
+                None => continue,
+            };
+            let cached = cache.get(&key).and_then(|c| {
+                let arr = c.as_array()?;
+                if arr.get(0)?.as_i64()? == fp.0 && arr.get(1)?.as_u64()? == fp.1 {
+                    arr.get(2)?.as_i64()
+                } else {
+                    None
+                }
+            });
+            let count = match cached {
+                Some(n) => n,
+                None => {
+                    let n = scan_message_count(&p);
+                    cache.insert(key, json!([fp.0, fp.1, n]));
+                    changed = true;
+                    n
+                }
+            };
+            if let Some(stem) = p.file_stem().and_then(|x| x.to_str()) {
+                out.insert(stem.to_string(), count);
+            }
+        }
+    }
+    changed
+}
+
+fn build_count_index(v: Variant) -> HashMap<String, i64> {
+    let cache_path = v.base().join("message_count_cache.json");
+    let mut cache: HashMap<String, serde_json::Value> = fs::read_to_string(&cache_path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default();
+
+    let root = v.projects();
+    let mut out = HashMap::new();
+    let mut changed = scan_dir_counts(&root, &mut cache, &mut out);
+    if let Ok(entries) = fs::read_dir(&root) {
+        for e in entries.flatten() {
+            if e.path().is_dir() {
+                changed |= scan_dir_counts(&e.path(), &mut cache, &mut out);
+            }
+        }
+    }
+
+    if changed {
+        if let Ok(s) = serde_json::to_string(&cache) {
+            let _ = fs::write(&cache_path, s);
+        }
+    }
+    out
 }
 
 #[derive(Clone)]
