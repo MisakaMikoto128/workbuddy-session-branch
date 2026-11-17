@@ -465,7 +465,7 @@ function renderSessions(){
       </div>`;
     }).join('');
     return `<div class="ws-group${closed}" data-ws="${esc(key)}" style="--ws-color:${wsColor(cwd)}">
-      <div class="ws-head" onclick="toggleGroup('${esc(key)}')" data-cwd="${esc(cwd)}" title="${esc(cwd)}　点击${closed?'展开':'收起'}">
+      <div class="ws-head" data-cwd="${esc(cwd)}" title="${esc(cwd)}　点击${closed?'展开':'收起'}">
         <span class="ws-bar"></span>
         <span class="ws-arrow"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4l4 4 4-4"/></svg></span>
         <span class="ws-name">${esc(name)}</span><span class="ws-count">${list.length}</span>
@@ -479,6 +479,17 @@ function toggleGroup(key){
   if(closed)closedGroups.add(key);else closedGroups.delete(key);
   const head=g.querySelector('.ws-head');
   if(head&&head.dataset.cwd!==undefined)head.title=head.dataset.cwd+'　点击'+(closed?'展开':'收起');
+}
+let groupDelegationBound=false;
+function bindGroupDelegation(){
+  if(groupDelegationBound)return;
+  groupDelegationBound=true;
+  document.getElementById('sessList').addEventListener('click',e=>{
+    const head=e.target.closest&&e.target.closest('.ws-head');
+    if(!head)return;
+    const g=head.closest('.ws-group');
+    if(g)toggleGroup(g.dataset.ws);
+  });
 }
 function keyEnter(e,id){if(e.key==='Enter'||e.key===' '){e.preventDefault();pickSession(id);}}
 
@@ -750,22 +761,41 @@ document.addEventListener('keydown',e=>{
 });
 try{const t=localStorage.getItem('wb-theme');if(t==='dark')document.documentElement.dataset.theme='dark';}catch(e){}
 
+let updateLatest='',updatePage='';
+function dismissUpdate(){
+  try{if(updateLatest)localStorage.setItem('wb-update-dismissed',updateLatest);}catch(e){}
+  closeModal();
+}
+function openUpdatePage(){try{window.open(updatePage,'_blank');}catch(e){}}
 async function checkUpdate(){
+  let last=0;
+  try{last=parseInt(localStorage.getItem('wb-update-lastcheck')||'0',10)||0;}catch(e){}
+  const now=Date.now();
+  if(now-last<24*3600*1000)return;
+  try{localStorage.setItem('wb-update-lastcheck',String(now));}catch(e){}
   try{
     const r=await api('check_update');
     if(!r.ok||!r.hasUpdate)return;
-    if(sessionStorage.getItem('wb-update-dismissed')===r.latest)return;
+    let dismissed='';
+    try{dismissed=localStorage.getItem('wb-update-dismissed')||'';}catch(e){}
+    if(dismissed===r.latest)return;
+    updateLatest=r.latest;updatePage=r.page||'';
     showModal(`<div class="modal"><h2><span class="bullet" style="background:var(--c-blue)"></span>发现新版本</h2>
       <p>当前 ${esc(r.current)}，最新版本 <b>${esc(r.latest)}</b>。建议更新以获得新功能与修复。</p>
       <div class="note">点击「去下载」打开 Release 页面，下载对应版本后覆盖安装即可。你的会话数据不会受影响。</div>
       <div class="modal-btns">
-        <button class="btn btn-slate" onclick="sessionStorage.setItem('wb-update-dismissed','${esc(r.latest)}');closeModal()">稍后</button>
-        <button class="btn btn-blue" onclick="window.open('${esc(r.page)}','_blank');closeModal()">去下载</button>
+        <button class="btn btn-slate" onclick="dismissUpdate()">稍后</button>
+        <button class="btn btn-blue" onclick="openUpdatePage();dismissUpdate()">去下载</button>
       </div>
     </div>`);
   }catch(e){}
 }
-function boot(){loadSessions();initVariants();setSteps(1);setTimeout(checkUpdate,2000);}
+function scheduleUpdateCheck(){
+  const run=()=>checkUpdate();
+  if(window.requestIdleCallback)window.requestIdleCallback(run,{timeout:6000});
+  else setTimeout(run,6000);
+}
+function boot(){bindGroupDelegation();loadSessions();initVariants();setSteps(1);scheduleUpdateCheck();}
 function waitTauri(){
   if(window.__TAURI__&&(window.__TAURI__.invoke||(window.__TAURI__.core&&window.__TAURI__.core.invoke))){boot();return;}
   setTimeout(waitTauri,50);
