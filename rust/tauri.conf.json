@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "identifier": "com.workbuddy.session-branch",
   "build": {
-    "frontendDist": "../src/web",
+    "frontendDist": "../frontend",
     "beforeDevCommand": "",
     "beforeBuildCommand": ""
   },

@@ -136,7 +136,7 @@ rust/
   src/main.rs      Tauri commands（含 check_update）
   build.rs         从 git tag 注入版本号
   tauri.conf.json  Tauri 配置
-src/web/index.html 前端界面（设计 token + 三步流程 + 工作区分组）
+frontend/index.html 前端界面（设计 token + 三步流程 + 工作区分组）
 assets/            原创 logo 与多尺寸图标
 docs/site/         GitHub Pages 下载页
 docs/screenshots/  README 配图（全部演示数据）

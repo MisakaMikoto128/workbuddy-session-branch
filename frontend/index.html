@@ -149,7 +149,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .chip.on{color:var(--accent);background:var(--accent-soft);border-color:var(--accent);font-weight:600}
 .chip .dot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px;vertical-align:1px}
 
-.scroll{flex:1;overflow-y:auto;overscroll-behavior:contain}
+.scroll{flex:1;overflow-y:auto;overscroll-behavior:contain;overflow-anchor:none}
 .scroll::-webkit-scrollbar{width:9px}
 .scroll::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:9px;border:2px solid var(--surface)}
 .scroll::-webkit-scrollbar-track{background:transparent}
@@ -465,7 +465,7 @@ function renderSessions(){
       </div>`;
     }).join('');
     return `<div class="ws-group${closed}" data-ws="${esc(key)}" style="--ws-color:${wsColor(cwd)}">
-      <div class="ws-head" onclick="toggleGroup('${esc(key)}')" title="${esc(cwd)}　点击${closed?'展开':'收起'}">
+      <div class="ws-head" onclick="toggleGroup('${esc(key)}')" data-cwd="${esc(cwd)}" title="${esc(cwd)}　点击${closed?'展开':'收起'}">
         <span class="ws-bar"></span>
         <span class="ws-arrow"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4l4 4 4-4"/></svg></span>
         <span class="ws-name">${esc(name)}</span><span class="ws-count">${list.length}</span>
@@ -473,8 +473,12 @@ function renderSessions(){
   }).join('');
 }
 function toggleGroup(key){
-  if(closedGroups.has(key))closedGroups.delete(key);else closedGroups.add(key);
-  renderSessions();
+  const g=[...document.querySelectorAll('.ws-group')].find(x=>x.dataset.ws===key);
+  if(!g)return;
+  const closed=g.classList.toggle('closed');
+  if(closed)closedGroups.add(key);else closedGroups.delete(key);
+  const head=g.querySelector('.ws-head');
+  if(head&&head.dataset.cwd!==undefined)head.title=head.dataset.cwd+'　点击'+(closed?'展开':'收起');
 }
 function keyEnter(e,id){if(e.key==='Enter'||e.key===' '){e.preventDefault();pickSession(id);}}
 
