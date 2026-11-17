@@ -109,6 +109,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .spacer{flex:1}
 
 .icon-btn{width:34px;height:34px;border-radius:var(--r-sm);display:grid;place-items:center;color:var(--ink-2);transition:.15s var(--ease)}
+.update-hint{background:none;border:0;padding:4px 2px;font-size:var(--fs-xs);color:var(--ink-3);text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;cursor:pointer;transition:color .15s var(--ease)}
+.update-hint:hover{color:var(--c-blue)}
+.update-hint[hidden]{display:none}
 .icon-btn:hover{background:var(--surface-2);color:var(--ink)}
 .icon-btn svg{width:18px;height:18px}
 
@@ -296,6 +299,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
       <button data-v="domestic" onclick="switchVariant('domestic')">国内版</button>
       <button data-v="international" onclick="switchVariant('international')">国际版</button>
     </div>
+    <button class="update-hint" id="updateHint" hidden title="有新版本可下载">新版本</button>
     <button class="icon-btn" id="themeBtn" title="切换明暗主题" aria-label="切换明暗主题"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
     <button class="btn btn-blue" onclick="loadSessions()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/></svg>刷新</button>
   </header>
@@ -761,12 +765,6 @@ document.addEventListener('keydown',e=>{
 });
 try{const t=localStorage.getItem('wb-theme');if(t==='dark')document.documentElement.dataset.theme='dark';}catch(e){}
 
-let updateLatest='',updatePage='';
-function dismissUpdate(){
-  try{if(updateLatest)localStorage.setItem('wb-update-dismissed',updateLatest);}catch(e){}
-  closeModal();
-}
-function openUpdatePage(){try{window.open(updatePage,'_blank');}catch(e){}}
 async function checkUpdate(){
   let last=0;
   try{last=parseInt(localStorage.getItem('wb-update-lastcheck')||'0',10)||0;}catch(e){}
@@ -776,18 +774,11 @@ async function checkUpdate(){
   try{
     const r=await api('check_update');
     if(!r.ok||!r.hasUpdate)return;
-    let dismissed='';
-    try{dismissed=localStorage.getItem('wb-update-dismissed')||'';}catch(e){}
-    if(dismissed===r.latest)return;
-    updateLatest=r.latest;updatePage=r.page||'';
-    showModal(`<div class="modal"><h2><span class="bullet" style="background:var(--c-blue)"></span>发现新版本</h2>
-      <p>当前 ${esc(r.current)}，最新版本 <b>${esc(r.latest)}</b>。建议更新以获得新功能与修复。</p>
-      <div class="note">点击「去下载」打开 Release 页面，下载对应版本后覆盖安装即可。你的会话数据不会受影响。</div>
-      <div class="modal-btns">
-        <button class="btn btn-slate" onclick="dismissUpdate()">稍后</button>
-        <button class="btn btn-blue" onclick="openUpdatePage();dismissUpdate()">去下载</button>
-      </div>
-    </div>`);
+    const hint=document.getElementById('updateHint');
+    if(!hint)return;
+    hint.title=`当前 ${r.current}，最新 ${r.latest}。点击查看下载页`;
+    hint.onclick=()=>{try{window.open(r.page,'_blank');}catch(e){}};
+    hint.hidden=false;
   }catch(e){}
 }
 function scheduleUpdateCheck(){
