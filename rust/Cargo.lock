@@ -4338,7 +4338,7 @@ dependencies = [
 
 [[package]]
 name = "wb-session-branch"
-version = "1.0.0"
+version = "2.3.4"
 dependencies = [
  "chrono",
  "dirs 5.0.1",
