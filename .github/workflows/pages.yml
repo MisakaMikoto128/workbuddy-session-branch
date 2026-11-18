@@ -30,6 +30,12 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      - name: Stage site assets
+        run: |
+          mkdir -p docs/site/assets docs/site/screenshots
+          cp assets/icon-64.png docs/site/assets/
+          cp docs/screenshots/*.png docs/site/screenshots/
+
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
