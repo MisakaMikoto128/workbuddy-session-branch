@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <desc>会话分支管理器 · 图标集。母题：消息节点 + 分支/轨道，与 logo 同源。24×24 网格，1.7 描边，只用 currentColor。</desc>
+
+  <!-- 分叉：一个来源节点分出两条路径 -->
+  <symbol id="i-fork" viewBox="0 0 24 24">
+    <path d="M8.3 10.8L15.7 7.2M8.3 13.2L15.7 16.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    <circle cx="5.6" cy="12" r="2.5" fill="currentColor"/>
+    <circle cx="18.4" cy="6" r="2.5" fill="currentColor"/>
+    <circle cx="18.4" cy="18" r="2.5" fill="currentColor"/>
+  </symbol>
+
+  <!-- 保留：前两条保留，第三条排除 -->
+  <symbol id="i-keep" viewBox="0 0 24 24">
+    <path d="M7.9 12h1.8M14.3 12h1.7" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    <circle cx="5.6" cy="12" r="2.3" fill="currentColor"/>
+    <circle cx="12" cy="12" r="2.3" fill="currentColor"/>
+    <circle cx="18.2" cy="12" r="2.4" fill="none" stroke="currentColor" stroke-width="1.7"/>
+  </symbol>
+
+  <!-- 双版本：两套数据，两条并行轨道 -->
+  <symbol id="i-dual" viewBox="0 0 24 24">
+    <path d="M4.6 7.9h14.8M4.6 16.1h14.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/>
+    <circle cx="16.6" cy="7.9" r="2.3" fill="currentColor"/>
+    <circle cx="7.4" cy="16.1" r="2.3" fill="currentColor"/>
+  </symbol>
+
+  <!-- 本地：整条分叉链在本机闭环内 -->
+  <symbol id="i-local" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.8" fill="none" stroke="currentColor" stroke-width="1.7"/>
+    <path d="M11.4 10.9L15.3 8.6M11.4 13.1L15.3 15.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+    <circle cx="9.4" cy="12" r="2" fill="currentColor"/>
+    <circle cx="17" cy="7.6" r="1.7" fill="currentColor"/>
+    <circle cx="17" cy="16.4" r="1.7" fill="currentColor"/>
+  </symbol>
+</svg>
