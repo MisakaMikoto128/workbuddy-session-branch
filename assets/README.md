@@ -11,6 +11,8 @@
 
 导出方式：`icon.svg` 先渲成 512 透明 PNG，再按尺寸缩放；`app.ico` 由同一张母图一次写出多尺寸，避免逐尺寸手绘走形。
 
+注意：GitHub Pages 只发布 `docs/site`，改动图标后需把 `icon-64.png` 同步到 `docs/site/assets/`，否则站点头部仍是旧图。
+
 ## 图标集
 
 `icons.svg` — 4 个 24×24 功能图标，几何语言与 logo 同源：**实心消息节点 + 1.7 描边连线**，只用 `currentColor`，无填充色块。
