@@ -94,7 +94,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   width:34px;height:34px;flex:0 0 auto;border-radius:9px;
   background:var(--ink);display:grid;place-items:center;
 }
-.mark svg{width:19px;height:19px;stroke:var(--surface)}
+.mark svg{width:19px;height:19px;fill:var(--surface)}
 .brand h1{font-size:var(--fs-lg);font-weight:600;letter-spacing:-.01em;line-height:1.2}
 .brand .sub{font-size:var(--fs-xs);color:var(--ink-3);letter-spacing:.01em}
 
@@ -286,7 +286,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 <div class="app">
   <header class="topbar">
     <div class="brand">
-      <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="18" r="2.4"/><circle cx="18" cy="6" r="2.4"/><path d="M8.4 6h7.2M6 8.4v7.2M8.4 18h7.2"/></svg></div>
+      <div class="mark"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="10.2" y="4" width="10.6" height="7.4" rx="2.6"/><path d="M5.6 8.6h8.6a2.6 2.6 0 0 1 2.6 2.6v2.8a2.6 2.6 0 0 1-2.6 2.6H9.4l-4.2 3.4 1.1-3.4H5.6A2.6 2.6 0 0 1 3 13.9v-2.7a2.6 2.6 0 0 1 2.6-2.6Z" style="stroke:var(--ink);stroke-width:1.9"/></svg></div>
       <div><h1>会话分支管理器</h1><div class="sub">从任意消息分叉出独立会话，原会话保持不变</div></div>
     </div>
     <nav class="steps" aria-label="操作步骤">

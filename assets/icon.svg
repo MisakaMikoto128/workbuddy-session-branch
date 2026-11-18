@@ -1,8 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="应用图标">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="会话分支管理器 应用图标">
   <title>会话分支管理器 应用图标</title>
-  <rect x="24" y="24" width="464" height="464" rx="112" fill="#5C4ED6"/>
-  <path d="M140 256 L372 150 M140 256 L372 362" stroke="#fff" stroke-opacity="0.94" stroke-width="18" stroke-linecap="round" fill="none"/>
-  <circle cx="140" cy="256" r="40" fill="#fff"/>
-  <circle cx="372" cy="150" r="40" fill="#fff"/>
-  <circle cx="372" cy="362" r="40" fill="#fff"/>
+  <desc>两个前后叠放的对话气泡：原有会话保留在后，新分支在前，指代从会话中分出一条新线</desc>
+  <defs>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="24" y1="24" x2="488" y2="488">
+      <stop offset="0" stop-color="#6C5CE7"/>
+      <stop offset="1" stop-color="#4A3FCB"/>
+    </linearGradient>
+  </defs>
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="url(#bg)"/>
+  <rect x="218" y="104" width="208" height="164" rx="48" fill="#fff"/>
+  <path d="M142 206H286A56 56 0 0 1 342 262V326A56 56 0 0 1 286 382H202L118 440L140 382H142A56 56 0 0 1 86 326V262A56 56 0 0 1 142 206Z" fill="none" stroke="url(#bg)" stroke-width="44" stroke-linejoin="round"/>
+  <path d="M142 206H286A56 56 0 0 1 342 262V326A56 56 0 0 1 286 382H202L118 440L140 382H142A56 56 0 0 1 86 326V262A56 56 0 0 1 142 206Z" fill="#fff"/>
 </svg>
