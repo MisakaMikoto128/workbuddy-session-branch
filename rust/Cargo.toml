@@ -1,6 +1,6 @@
 [package]
 name = "wb-session-branch"
-version = "2.3.4"
+version = "2.3.5"
 edition = "2021"
 description = "WorkBuddy 会话分支管理器"
 authors = ["liuyuanlin"]
@@ -24,8 +24,8 @@ dirs = "5"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "blocking"] }
 
 [profile.release]
-opt-level = "z"
-lto = true
+opt-level = 3
+lto = "fat"
 codegen-units = 1
 panic = "abort"
 strip = true
