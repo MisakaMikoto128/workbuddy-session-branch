@@ -3,8 +3,8 @@
   <desc>两个前后叠放的对话气泡：原有会话保留在后，新分支在前，指代从会话中分出一条新线</desc>
   <defs>
     <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="24" y1="24" x2="488" y2="488">
-      <stop offset="0" stop-color="#6C5CE7"/>
-      <stop offset="1" stop-color="#4A3FCB"/>
+      <stop offset="0" stop-color="#35425A"/>
+      <stop offset="1" stop-color="#232C3E"/>
     </linearGradient>
   </defs>
   <rect x="24" y="24" width="464" height="464" rx="112" fill="url(#bg)"/>
